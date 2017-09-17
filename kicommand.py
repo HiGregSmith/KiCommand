@@ -100,15 +100,22 @@ class gui(kicommand_gui.kicommand_panel):
         # self.Raise()
         # self.Show()
         
-
+    combolist = []
+    #self.entrybox.SetItems(combolist)
     def process(self,e):
         try:
-            run(self.entrybox.GetValue())
+            commandstring = self.entrybox.GetValue()
+            run(commandstring)
             self.entrybox.Clear()
             self.outputbox.ShowPosition(self.outputbox.GetLastPosition())
+            self.combolist.insert(0,commandstring)
+            self.entrybox.SetItems(self.combolist)
+            #self.entrybox.Append(commandstring)
             self.entrybox.SetFocus()
-        except:
-            wx.MessageDialog(self.GetParent(),"Error - I know this isn't helpful, but better error handling is coming").ShowModal()
+            #output(str(self.combolist))
+            self.entrybox.Update()
+        except Exception as e:
+            wx.MessageDialog(self.GetParent(),"Error 1: %s"%str(e)).ShowModal()
             
 
 class aplugin(pcbnew.ActionPlugin):
