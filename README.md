@@ -1,2 +1,171 @@
-# KiCommand
-A simple command line interface to KiCad.
+# KiCommand - Kicad Command Line
+
+KiCommand allows simple command strings to be executed within pcbnew.
+Command strings consist of a variety commands that retrieve, filter, and
+process Kicad objects. Commands are very easily added with a simple syntax.
+
+Here are a few short examples:
+
+- **pads setselect**
+    - select all pads
+- **: selectallpads pads setselect ;**
+    - define a new command called **SELECTALLPADS** that select all pads
+- **modules U1 matchreference getpads setselect**
+    - select the pads of the module with reference 'U1'
+- **: selectmodpads modules swap matchreference getpads setselect ;**
+    - define a command that select the pads of the module indicated by the argument.
+    - Use the command like this: **U1 selectmodpads**
+- **valuetextobj DeleteStructure call**
+    - Delete all value objects on the modules
+- **valuetextobj selected DeleteStructure call**
+    - Delete all selected value objects on the modules
+
+## Getting Started
+### Installation
+
+KiCommand is an ActionPlugin and is installed similarly to other Action Plugins:
+
+1) Place the kicommand.py and kicommand_gui.py files in 
+C:\Program Files\KiCad\share\kicad\scripting\plugins
+Or the equivalent in MacOS or Linux
+(*there may be a user-level directory for such files, but I am not aware of it at the moment.*)
+2) Within KiCad pcbnew, select the Tools > External Plugins > Refresh Plugins
+3) The next time you start pcbnew, the *KiCommand* menu item will already be in
+the *External Plugins* menu so there is no need to *Refresh Plugins*.
+
+KiCommand dialog box is shown when the Tools > External Plugins > KiCommand menu item is selected.
+
+### Self Documented Help
+Open the Script Console from the Tools menu. Then type
+
+    import kcstack
+    r=kcstack.runcommand
+    r("HELP")
+    
+This will display a short help message, including how to get a list of
+commands and how to get more detailed information about each command.
+
+Another useful help commands are:
+- **r("Help helpcat")** - short list of help commands
+- **r("'help helpcom")** - details of commands with **HELP** in the name.
+Note the preceding single quote character.
+- **r("All helpcat")** - all commands listed by category
+- **r("helpall")** - all commands by category with their details in
+alphabetical order
+
+# Overview
+
+With KiCommand, arguments to commands are entered *before* the command. Any results
+from the command are then used as an argument to the *next* command. This way,
+you can chain together commands in a way that often makes sense. This 
+programming structure is
+called *[stack-based programming](https://en.wikipedia.org/wiki/Stack-oriented_programming_language)*.
+
+KiCommand has several advantages over Python Scripting:
+
+- Simplicity in programming and argument type handling make KiCommand more
+accessible than the equivalent KiCad Python scripting.
+- Command strings mean less worrying about variables.
+- Command strings are often short and easily sharable.
+- Many commands accept a variety of input types, and still work as you would expect.
+- Programming structure means you don't have to worry as much about variables.
+- KiCommand naturally handles lists of objects, so looping over objects is not
+needed: it just happens.
+- Being able use pcbnew Python object attributes and functions gives
+KiCommand a lot of access to the Kicad object model.
+- Defining new commands is simple.
+- With KiCommand handling of argument types, there's less worrying about
+exact types.
+
+And several disadvantages:
+
+- Built in commands have flexible argument types, while Python commands
+(accessed with *callargs*) may require careful argument manipulation.
+- Most commands are simple and straightforward, while complex commands are
+possible. The stack-based structure makes some complex strings difficult to
+decipher or create even for experienced programmers.
+- While creating entirely new elements from scratch is usually possible,
+command strings are sometimes wordy.
+- There are currently no looping or conditional commands.
+- Full flexibility is only available with Python scripting. Command strings
+are a short simple interface for some object manipulation or interrogation.
+- (Currently) Strings with spaces cannot be created from scratch.
+
+## Introduction to Command Strings and Programming Structure
+
+In KiCommand, a *Command String* contains a sequence of arguments and commands
+that are executed sequentially. Arguments occur before the command that uses 
+them. The arguments are *consumed* by a command and the results of the command
+are stored on top of any previously unused arguments or results, making those 
+arguments and results available to a future commands. 
+
+This is implemented and often imagined as a *stack* structure.
+In this structure, the stack holds *values* (aka *operands*) that are used in
+subsequent *commands*.
+
+Several important characteristics of the stack structure of programming:
+
+- operands are placed **on top of the** ***stack*** when encountered in the 
+*command string*
+- operands are removed **from the top of the** ***stack*** when commands are encountered in the command string
+- operands are placed **on top of the** ***stack*** when returned from executed commands
+- results from previous commands, when unused, continue to exist on the stack
+and can be used for future commands. In this way, results from past commands
+build up to become arguments for future commands.
+
+## Examples
+
+- **[modules]**
+    - return the list of modules
+- **[modules selected]**
+    - return the list of selected modules
+- **[modules selected clearselect]**
+    - unselect all selected modules
+- **[modules setselect]**
+    - select all modules (this seems to have no visual effect)
+- **[pads setselect]**
+    - select all pads
+- **[pads clearselect]**
+    - unselect all pads
+- **[modules getpads setselect]**
+    - select all pads of all modules
+- **[modules getpads clearselect]**
+    - unselect all pads of all modules
+- **[modules U1 matchreference getpads setselect]**
+    - select the pads of the module with reference 'U1'
+   
+### General Conventions
+
+KiCommand follows a general set of conventions:
+
+- Commands are all lower case.
+- Arguments are usually Mixed Case.
+- Python commands within Command Stack are whatever is needed, but mostly will be Mixed Case or UPPER CASE.
+- To enter an argument that also happens to be a command, use the single quote mark (') such as in the following string: **'calllist help**
+- Access to Python functions and attributes are exactly as documented in the [Python pcbnew documentation](http://docs.kicad-pcb.org/doxygen-python/namespacepcbnew.html), which are often in either mixed case or all caps. Example **[modules GetCenter call]**
+- Define a new command with the colon, and end with the semicolon.
+    - **: newcommand ARG Arg command ARG command ;**
+- Core commands either place objects on the stack or operate on objects on the stack. The commands that place a list of objects on the stack are in the category *Elements* and are listed with the command **Elements helpcat**:
+    - **modules**
+    - **pads**
+    - **tracks** - includes vias
+    - **drawings**
+- From these core commands, other commands are defined to retrieve certain objects.    
+    - **textobj**
+    - **valuetextobj**
+    - **referencevalueobj**
+    - **toptext**
+- And in case there is anything missing, you can access the top-level board and pcbnew objects.
+    - **pcbnew** - top level pcbnew Python object
+    - **board** - top level Board Python object from **pcbnew.GetBoard()**
+- And finally, you can filter each of the above objects to choose exactly the objects you want, or get at them in slightly different ways.
+    - **pads selected**
+    - **modules U1 matchreference getpads**
+    - **tracks VIA filtertype**
+
+### About Capitalization
+
+- The capitalization convention works well with most text on the board in uppercase and most Python functions and variables being upper or mixed case.
+- Mixed Case items are all arguments (Python functions and objects look like arguments in the Command String). Mixed case arguments means they also do not get interpreted as commands.
+- Lower case commands do not conflict with the namespaces of most Python commands/variables nor do they conflict with arguments.
+- Note that these capitalization conventions almost eliminate the need for using single quote (it still may be necessary in some cases).
