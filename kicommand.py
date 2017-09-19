@@ -3,17 +3,62 @@ from collections import defaultdict, Counter
 from itertools import compress,izip, cycle
 import pcbnew
 import time
+import os
 import math
 from textwrap import wrap
 import wx
 from wxpointutil import wxPointUtil
 import kicommand_gui
 
-# 20170906 - Greg Smith
-#     Created
+
+# drawings selected 465,30 mm pcbnew wxPoint callargs 100 zip2 Rotate callargs
+
+
+# pcbnew list wxPoint attr
+
+
+# pcbnew list 460,30 mm wxPoint callargs
+
 # This code is in bad shape at the moment.
 # Lot's of extra stuff that really doesn't belong
 # Lot's of printing that the user really doesn't need.
+
+# :persist wxpoint pcbnew list swap wxPoint callargs ; 
+# 20170906 - Greg Smith
+#     Created
+# 20170918 - Greg Smith
+#
+#     Added builtins, fcall, fcallargs to enable getting the 'range' function
+#     "clear builtins range index list 5 int list print fcallargs"
+#     For some reason, builtins appears on the stack as a dictionary, which
+#     won't work with 'call' or 'callargs', so 'fcall', 'fcallargs', and 'sindex'
+#     were created.
+#
+#     Added sindex to allow accessing Python dictionaries with string indexes.
+#     
+#     Fixed pick command, was only returning top of stack.
+#
+#     Reworked 'int' command so that it returns a single value, not list, if there
+#     is a single string without a comma. This allows the creation of a single
+#     value on the stack (motivated in this case to enable 'index' to work well
+#     with lists or dictionaries).
+#     ": range int list builtins range index list swap print fcallargs ;"
+#
+#     Reworked 'float', 'index', 'mm', 'mil', 'mils' similarly to int.
+#
+#     Added quoted string using "double quotes". All spaces inside the quote
+#     marks are retained. Words are split on the double quote mark such that the 
+#     following are equal:
+#     1 2 3 " 4 5 6 " 7 8 9
+#     1 2 3" 4 5 6 "7 8 9
+#     If in a file, pairs of quote marks must be on the same line.
+#
+#     Added load and save commands for the user dictionary. Lightly tested.
+#
+#
+#
+#
+#
 
 # r('clear : valuetext modules Value call ; : referencetext modules Reference call ; : moduletext modules GraphicalItems calllist EDA_TEXT filtertype ;')
 # r('clear moduletext valuetext append referencetext append toptext append copy GetTextBox call corners swap copy GetCenter call swap GetTextAngle call rotatepoints drawsegments')
@@ -145,6 +190,100 @@ class aplugin(pcbnew.ActionPlugin):
         manager.Update()
         run('help')
 
+def run(commandstring):
+
+# Items beginning with single quote are entered onto the stack as a string (without the quote)
+# Items beginning with double quote swallow up elements until a word ends in a double quote,
+# and enters the entire item on the stack as a string (without the quotes)
+# Commands beginning with ? are conditional. The top of the stack is popped,
+# and if it was True, then the command is executed.
+
+    global _operand_stack
+    global _compile_mode
+    global _command_definition
+    global _user_dictionary
+    global _dictionary
+    #output( _command_dictionary.keys())
+    #output( str(_operand_stack))
+    
+    commandlines = commandstring.splitlines()
+    
+    for commandstring in commandlines:
+        commands = []
+        qend = 0
+        while True:
+            qindex = commandstring.find('"',qend)
+            if qindex != -1:
+                # wx.MessageDialog(None,'PRE '+commandstring[qend:qindex-1]).ShowModal()
+                commands.extend(commandstring[qend:qindex].split())
+                qend = commandstring.find('"',qindex+1)
+                if qend == -1:
+                    raise SyntaxError('A line must contain an even number of double quotes.')
+                commands.append(commandstring[qindex+1:qend])
+                # wx.MessageDialog(None,'Q {'+commandstring[qindex+1:qend]+'}').ShowModal()
+                qend += 1
+            else:
+                break
+            
+        # wx.MessageDialog(None,'END {'+commandstring[qend:]+'}').ShowModal()
+        commands.extend(commandstring[qend:].split())
+    # wx.MessageDialog(None,'{'+'}{'.join(commands)+'}').ShowModal()
+    for command in commands:
+        
+        if command == ';':
+            _compile_mode = False
+            comm = _command_definition[:1]
+            cdef = _command_definition[1:]
+            output( "COMMAND %s DEFINITION %s"%(comm,cdef))
+            if not comm: # delete all commands in the user dictionary: ': ;'
+                _user_dictionary = {}
+                continue
+            comm = comm[0]
+            if cdef: # delete a command in the user dictionary: ': COMMAND ;'
+                _dictionary[_newcommanddictionary][comm] = ' '.join(cdef)
+            else:
+                del(_user_dictionary[_command_definition[0]])
+            _command_definition = []
+            continue
+
+        if _compile_mode:
+            _command_definition.append(command)
+            continue
+        
+        if command.startswith("'"):
+            _operand_stack.append(command[1:])
+            continue
+            
+        found = False
+        for dictname in ['user','persist']:
+            if command in _dictionary[dictname]:
+                run(_dictionary[dictname][command])
+                found = True
+                continue
+        if found:
+            continue
+        if command not in _command_dictionary:
+            _operand_stack.append(command)
+            continue
+
+        numop = _command_dictionary[command].numoperands
+        result = _command_dictionary[command].execute(_operand_stack[-numop:])
+        #output( '1: ',str(_operand_stack))
+        if numop != 0:
+            _operand_stack = _operand_stack[:-numop]
+        #output( '2: ',str(_operand_stack))
+        
+        if result is None:
+            #output( command,'result is None')
+            continue
+        #output( command,_command_dictionary[command].numoperands,'result is not None',str(_operand_stack), str(result))
+        _operand_stack.append(result)
+    #output( 'after command: ',str(_operand_stack))
+    if len(_operand_stack):
+        output( len(_operand_stack), 'operands left on the stack.' )
+        
+    pcbnew.UpdateUserInterface()
+    return _operand_stack
 
 def retNone(function,args):
     function(args)
@@ -1097,13 +1236,35 @@ def CORNERS_old(c):
             xyvals.append((l,t,r,t,r,b,l,b,l,t))
         #elif isinstance(poly[0],pcbnew.wxPoint):
     return xyvals
-        
+
+savepath = os.path.join(os.path.expanduser('~'),'kicad','kicommand')
+
+def LOAD(name):
+    new_path = os.path.join(savepath, name)
+    with open(new_path,'r') as f: run(f.read())
+
+def SAVE(name):
+    dictname = 'user'
+    if not os.path.exists(savepath):
+        os.makedirs(savepath)
+        output('created ~/kicad/kicommand')
+    output("saving to %s"%name)
+    new_path = os.path.join(savepath, name)
+    with open(new_path,'w') as f:
+        commands = _dictionary[dictname].iteritems()
+        for command,definition in sorted(commands,key=lambda x:x[0]):
+            f.write( ": %s %s ;\n"%(command,_dictionary[dictname][command]))
 
 def EXPLAIN(commandstring,category=None):
     commands = commandstring.split(',')
     commands.reverse()
     printed = set()
+    count = 0
     while commands:
+        count += 1
+        if count > 100:
+            output('explain command has limit of 100 command output.')
+            break
         command = commands.pop()
         if not command:
             continue
@@ -1278,9 +1439,29 @@ _command_dictionary = {
         '[objects attribute] Get specified python attribute of the objects' ),
     # want this to work where c[1] is a value or list. If list, then member by member.
     #'index': Command(2,lambda c: map(lambda x: x[c[1]], c[0]),'Attributes',
-    'index': Command(2,lambda c: c[0][int(c[1])],'Attributes',
-        '[objects index] Select an item in the list of objects'),
-    
+    'sindex': Command(2,lambda c: c[0][c[1]],'Attributes',
+       '[DICTIONARYOBJECT STRINGINDEX] Select an item in the list of objects based on string INDEX'),
+
+    'index': Command(2,
+                       lambda c: c[0][int(c[1])] if isinstance(c[1],basestring) \
+                       and c[1].find(',') == -1 else map(lambda x: x[0][int(x[1])],
+                       izip(c[0], cycle(c[1].split(','))
+                       if isinstance(c[1],basestring) else c[1]
+                       )),
+                       
+                       #if hasattr(c[0],'__iter__') else [c[1]]),
+                       
+                       # lambda c: map(lambda x: x[0][x[1]],
+                       # c[0].split(',')
+                       # if isinstance(c[0],basestring) else c[0]
+                       # if hasattr(c[0],'__iter__') else [c[0]]),
+                       'Programming',
+        '[LIST INDEX] Select an item in the list of objects based on numeric index. '
+        'If INDEX is a list of integers or a comma separated list of numbers, then '
+        'each number in INDEX will be applied to the corresponding item in the LIST of '
+        'lists, where the INDEX list is repeated or truncated as necessary.'
+        ),
+        
     # PCB Actions
     'setselect': Command(1,lambda c: filter(lambda x: x.SetSelected(), c[0]),'Action',
         '[objects] Select the objects'),
@@ -1317,15 +1498,35 @@ _command_dictionary = {
         'Output the string representation of the objects on the stack'),
     'print': Command(0,lambda c: PRINT(),'Programming',
         'Output the string representation of the top object on the stack'),
+    'builtins': Command(0,lambda c:  __builtins__,'Programming',
+        'Output the __builtins__ Python object, giving access to the built in Python functions.'),
     
-    'getstart': Command(1,lambda c: [m.GetStart() for m in c[0]],'Call',
-        '[LIST] Get the start wxPoint from the LIST of DRAWSEGMENTS.'),
-    'getend': Command(1,lambda c: [m.GetEnd() for m in c[0]],'Call',
-        '[LIST] Get the end wxPoint from the LIST of DRAWSEGMENTS.'),
+    # 'getstart': Command(1,lambda c: [m.GetStart() for m in c[0]],'Call',
+        # '[LIST] Get the start wxPoint from the LIST of DRAWSEGMENTS.'),
+    # 'getend': Command(1,lambda c: [m.GetEnd() for m in c[0]],'Call',
+        # '[LIST] Get the end wxPoint from the LIST of DRAWSEGMENTS.'),
     'calllist': Command(2,lambda c: CALLLIST(c[0],c[1]),'Call',
         '[LIST FUNCTION] Execute python FUNCTION on each member of LIST.'
         'The FUNCTION must return a list of items (this is suitable'
         'for module functions such as GraphicalItems and Pads.'),
+    'fcall': Command(1,lambda c: map(lambda x: x(), c[0]),'Call',
+        '[FUNCTIONLIST] Execute each python function in the FUNCTIONLIST on each member of LIST. Return the list of results in the same order as the original LIST.'),
+    'fcallargs': Command(2,
+                lambda c: 
+                map(lambda x: 
+                        x[0](*(x[1])), 
+                        izip(c[0], cycle(c[1]))
+                   )
+                ,'Call',
+        '[FUNCTIONLIST ARGLISTOFLISTS] Execute each python function in the'
+        'FUNCTIONLIST on each member of that list with arguments in ARGLISTOFLISTS.' 'ARGLISTOFLISTS can be '
+        'a different length than OBJECTLIST, in which case ARGLISTOFLISTS '
+        'elements will be repeated (or truncated) to match the length of '
+        'OBJECTLIST. Returns the list of results in the same order as the '
+        'original OBJECTLIST. The commands LIST and ZIP2 will be helpful '
+        'here.'),
+
+    
     'call': Command(2,lambda c: map(lambda x: getattr(x,c[1])(), c[0]),'Call',
         '[LIST FUNCTION] Execute python FUNCTION on each member of LIST. Return the list of results in the same order as the original LIST.'),
     'callfilter': Command(2,lambda c: filter(lambda x: getattr(x,c[1])(), c[0]),'Call',
@@ -1378,15 +1579,33 @@ _command_dictionary = {
     'append': Command(2,lambda c: c[0]+c[1],'Stack',
         '[OPERAND1 OPERAND2] Return LIST1 and LIST2 concatenated together.'),
     #'copytop': Command(0,lambda c: list(_operand_stack[-1])),
-    'copytop': Command(0,lambda c: _operand_stack[-1],'Stack',
-        'Duplicate the top object on the stack.'),
+    # 'copytop': Command(0,lambda c: _operand_stack[-1],'Stack',
+        # 'Duplicate the top object on the stack.'),
     'clear': Command(0,lambda c: CLEAR(),'Stack',
         'Clear the stack.'),
     # Conversion
     #'float': Command(1,lambda c: float(c[0]),'Conversion'),
     # Handles string, comma sep string, float, list of anything convertable
+    # old version of float:
+    # 'float': Command(1,
+                       # lambda c: map(lambda x: float(x),
+                       # c[0].split(',')
+                       # if isinstance(c[0],basestring) else c[0]
+                       # if hasattr(c[0],'__iter__') else [c[0]]),
     'float': Command(1,
-                       lambda c: map(lambda x: float(x),
+                       lambda c: float(c[0]) if isinstance(c[0],basestring) \
+                       and c[0].find(',') == -1 else map(lambda x: float(x),
+                       c[0].split(',')
+                       if isinstance(c[0],basestring) else c[0]
+                       if hasattr(c[0],'__iter__') else [c[0]]),
+                       'Conversion',
+        '[OBJECT] Return OBJECT as a floating point value or list. OBJECT can '
+        'be a string, a comma separated list of values, a list of strings, or '
+        'list of numbers.', ),
+    'int': Command(1,
+    # if basestring and has ','
+                       lambda c: int(c[0]) if isinstance(c[0],basestring) \
+                       and c[0].find(',') == -1 else map(lambda x: int(x),
                        c[0].split(',')
                        if isinstance(c[0],basestring) else c[0]
                        if hasattr(c[0],'__iter__') else [c[0]]),
@@ -1400,7 +1619,8 @@ _command_dictionary = {
         '[KEYS VALUES] Create a dictionary from KEYS and VALUES lists.'),
     #'mm': Command(1,lambda c: float(c[0])*pcbnew.IU_PER_MM,'Conversion'),
     'mm': Command(1,
-                       lambda c: map(lambda x: float(x)*pcbnew.IU_PER_MM,
+                       lambda c: float(c[0])*pcbnew.IU_PER_MM if isinstance(c[0],basestring) \
+                       and c[0].find(',') == -1 else map(lambda x: float(x)*pcbnew.IU_PER_MM,
                        c[0].split(',')
                        if isinstance(c[0],basestring) else c[0]
                        if hasattr(c[0],'__iter__') else [c[0]]),
@@ -1410,7 +1630,8 @@ _command_dictionary = {
         'be a string, a comma separated list of values, a list of strings, or '
         'list of numbers.'),
     'mil': Command(1,
-                       lambda c: map(lambda x: float(x)*pcbnew.IU_PER_MILS,
+                       lambda c: float(c[0])*pcbnew.IU_PER_MILS if isinstance(c[0],basestring) \
+                       and c[0].find(',') == -1 else map(lambda x: float(x)*pcbnew.IU_PER_MILS,
                        c[0].split(',')
                        if isinstance(c[0],basestring) else c[0]
                        if hasattr(c[0],'__iter__') else [c[0]]),
@@ -1420,7 +1641,8 @@ _command_dictionary = {
         'be a string, a comma separated list of values, a list of strings, or '
         'list of numbers.'),
     'mils': Command(1,
-                       lambda c: map(lambda x: float(x)*pcbnew.IU_PER_MILS,
+                       lambda c: float(c[0])*pcbnew.IU_PER_MILS if isinstance(c[0],basestring) \
+                       and c[0].find(',') == -1 else map(lambda x: float(x)*pcbnew.IU_PER_MILS,
                        c[0].split(',')
                        if isinstance(c[0],basestring) else c[0]
                        if hasattr(c[0],'__iter__') else [c[0]]),
@@ -1434,13 +1656,17 @@ _command_dictionary = {
     #'list': Command(1,lambda c: map(lambda x: [x],c[0]),'Conversion'),
     'list': Command(1,lambda c: [c[0]],'Conversion',
         '[OBJECT] Make OBJECT into a list (with only OBJECT in it).'),
+    'delist': Command(1,lambda c: c[0][0],'Conversion',
+        '[LIST] Output index 0 of LIST.'),
     
 
     #'swap': Command(2,retNone(lambda c: _operand_stack[-1],_operand_stack[-2]=_operand_stack[-2],_operand_stack[-1])),
-    'pick': Command(1,lambda c: _operand_stack.insert(-int(_operand_stack[-1])-1,_operand_stack[-2]),'Stack',
+    # 'pick': Command(1,lambda c: _operand_stack.insert(-int(_operand_stack[-1])-1,_operand_stack[-2]),'Stack',
+    #works: 'pick': Command(1,lambda c: _operand_stack.insert(-1,_operand_stack[len(_operand_stack)-int(c[0])-2]),'Stack',
+    'pick': Command(1,lambda c: _operand_stack.insert(-1,_operand_stack[-int(c[0])-2]),'Stack',
         '[NUMBER] Copy the value that is NUMBER of objects deep in the stack to the top of the stack. '
-        '\n\tExamples:\n\t0 PICK - copies the top of the stack.\n'
-        '\t1 PICK - pushes a copy of the second item from the top of the stack onto the top of the stack.\n'
+        '\n\tExamples:\n\t0 pick - copies the top of the stack.\n'
+        '\t1 pick - pushes a copy of the second item from the top of the stack onto the top of the stack.\n'
         ),
     'swap': Command(0,lambda c: SWAP(),'Stack',
         'Switches the two top objects on the stack.'),
@@ -1449,6 +1675,14 @@ _command_dictionary = {
         'LIST2 together at the same index.'),
     ':': Command(0,lambda c: setcompilemode(True),'Programming',
         'Begin the definition of a new command. This is the only command in '
+        'which arguments occur after the command. Command definition ends with '
+        'the semicolon (;). Run command SEEALL for more examples. Special commands are'
+        "Delete all commands ': ;'. Delete a command ': COMMAND ;"
+        ),
+        
+    ':persist': Command(0,lambda c: setcompilemode(True,'persist'),'Programming',
+        'Begin the definition of a new command in the persist dictionary. '
+        'This is the only type of command in '
         'which arguments occur after the command. Command definition ends with '
         'the semicolon (;). Run command SEEALL for more examples.'
         ),
@@ -1507,14 +1741,26 @@ _command_dictionary = {
         "[CATEGORY] Shows commands in CATEGORY. CATEGORY value of 'All' shows all categories."),
     'pad2draw': Command(1,lambda c: pad_to_drawsegment(c[0]),'Draw',
         '[PADLIST] draws outlines around pad on DRAWPARAMS layer.'),
+    'load': Command(1,lambda c: LOAD(c[0]),'Programming',
+        '[FILENAME] executes commands from FILENAME. relative to '
+        '~/kicad/kicommand. Note that this command is not '
+        'totally symmetric with the save command.'),
+    'save': Command(1,lambda c: SAVE(c[0]),'Programming',
+        '[FILENAME] saves the user dictionary into FILENAME relative to '
+        '~/kicad/kicommand. Note that this command is not '
+        'totally symmetric with the load command.'),
+
         
     # 'vias': filter(lambda x:isinstance(x,pcbnew.VIA),_command_dictionary['tracks']),
     # 'vias_class': filter(lambda x:pcbnew.VIA_Classof(x),_command_dictionary['tracks']),
 }
 
+_newcommanddictionary = None
 _compile_mode = False
-def setcompilemode(val=True):
+def setcompilemode(val=True, dictionary='user'):
     global _compile_mode
+    global _newcommanddictionary
+    _newcommanddictionary = dictionary
     _compile_mode=val
     
 """Tracks whether compile mode is on, allowing new command definitions.
@@ -1531,10 +1777,16 @@ def print_userdict(command):
             commands = filter (lambda x:x[0].startswith(command),_dictionary[dictname].iteritems())
         else:
             commands = _dictionary[dictname].iteritems()
+            #output ('%d items in %s'%(99,dictname))
         for command,definition in sorted(commands,key=lambda x:x[0]):
             output( ":",command,_dictionary[dictname][command],';')
 # r('CLEAR MODULETEXTOBJ VALUETEXTOBJ APPEND REFERENCETEXTOBJ APPEND COPY GetTextBox CALL CORNERS SWAP COPY GetCenter CALL SWAP GetTextAngleDegrees CALL ROTATEPOINTS DRAWSEGMENTS')
-
+# _persistdefault = """
+# :  ; 
+# """
+# for line in _persistdefault.splitlines():
+    # run(line)
+_dictionary['persist']['wxpoint'] = 'pcbnew list swap list wxPoint callargs'
 _dictionary['persist']['toptextobj'] = 'drawings EDA_TEXT filtertype'
 _dictionary['persist']['valuetextobj']= 'modules Value call'
 _dictionary['persist']['referencetextobj']= 'modules Reference call'
@@ -1549,33 +1801,33 @@ _dictionary['persist']['copy'] = "0 pick"
 _dictionary['persist']['setselect'] = 'SetSelected call'
 _dictionary['persist']['clearselect'] = 'ClearSelected call'
 _dictionary['persist']['clearallselected'] = """
-        MODULES COPY GetReference CALL CLEARSELECT
-        COPY GetValue CALL CLEARSELECT
-        COPY GraphicalItems CALLLIST CLEARSELECT
-        CLEARSELECT
-        PADS CLEARSELECT
-        TRACKS CLEARSELECT
-        DRAWINGS CLEARSELECT 
+        modules copy GetReference call clearselect
+        copy GetValue call clearselect
+        copy GraphicalItems calllist clearselect
+        clearselect
+        pads clearselect
+        tracks clearselect
+        drawings clearselect 
         """
 _dictionary['persist']['outlinepads'] = """
-        PADS COPY CORNERS SWAP COPY GetCenter CALL SWAP 
-        GetOrientationDegrees CALL ROTATEPOINTS DRAWSEGMENTS
+        pads copy corners swap copy GetCenter call swap 
+        GetOrientationDegrees call rotatepoints drawsegments
         """
 _dictionary['persist']['outlinetext'] = """
-        VALUETEXTOBJ
-        REFERENCETEXTOBJ APPEND 
-        MODULETEXTOBJ APPEND 
-        COPY GetTextBox CALL CORNERS SWAP COPY GetCenter CALL SWAP 
-        COPY GetTextAngleDegrees CALL SWAP GetParent CALL Cast CALL GetOrientationDegrees CALL
-        +L ROTATEPOINTS DRAWSEGMENTS
+        valuetextobj
+        referencetextobj append 
+        moduletextobj append 
+        copy GetTextBox call corners swap copy GetCenter call swap 
+        copy GetTextAngleDegrees call swap GetParent call Cast call GetOrientationDegrees call
+        +l rotatepoints drawsegments
         """ 
         
 _dictionary['persist']['outlinetoptext'] = """
-        TOPTEXTOBJ
-        COPY GetTextBox CALL CORNERS SWAP COPY GetCenter CALL SWAP
-        GetTextAngleDegrees CALL ROTATEPOINTS DRAWSEGMENTS ;
+        toptextobj
+        copy GetTextBox call corners swap copy GetCenter call swap
+        GetTextAngleDegrees call rotatepoints drawsegments ;
         """
-        #         TOPTEXTOBJ APPEND 
+        #         toptextobj append 
 
 #    'not': Command(0,lambda c: run('0 FLOAT ='),'Comparison'),
 
@@ -1627,78 +1879,6 @@ def pad_to_drawsegment(pad):
     # ds.SetEnd(pcbnew.wxPoint(x2,y2))
     return ds
 
-def run(commandstring):
-
-# Items beginning with single quote are entered onto the stack as a string (without the quote)
-# Items beginning with double quote swallow up elements until a word ends in a double quote,
-# and enters the entire item on the stack as a string (without the quotes)
-# Commands beginning with ? are conditional. The top of the stack is popped,
-# and if it was True, then the command is executed.
-
-    global _operand_stack
-    global _compile_mode
-    global _command_definition
-    global _user_dictionary
-    global _dictionary
-    #output( _command_dictionary.keys())
-    #output( str(_operand_stack))
-    commands = commandstring.split()
-    for command in commands:
-        
-        if command == ';':
-            _compile_mode = False
-            comm = _command_definition[:1]
-            cdef = _command_definition[1:]
-            output( "COMMAND %s DEFINITION %s"%(comm,cdef))
-            if not comm: # delete all commands in the user dictionary: ': ;'
-                _user_dictionary = {}
-                continue
-            comm = comm[0]
-            if cdef: # delete a command in the user dictionary: ': COMMAND ;'
-                _user_dictionary[comm] = ' '.join(cdef)
-            else:
-                del(_user_dictionary[_command_definition[0]])
-            _command_definition = []
-            continue
-
-        if _compile_mode:
-            _command_definition.append(command)
-            continue
-        
-        if command.startswith("'"):
-            _operand_stack.append(command[1:])
-            continue
-            
-        found = False
-        for dictname in ['user','persist']:
-            if command in _dictionary[dictname]:
-                run(_dictionary[dictname][command])
-                found = True
-                continue
-        if found:
-            continue
-        if command not in _command_dictionary:
-            _operand_stack.append(command)
-            continue
-
-        numop = _command_dictionary[command].numoperands
-        result = _command_dictionary[command].execute(_operand_stack[-numop:])
-        #output( '1: ',str(_operand_stack))
-        if numop != 0:
-            _operand_stack = _operand_stack[:-numop]
-        #output( '2: ',str(_operand_stack))
-        
-        if result is None:
-            #output( command,'result is None')
-            continue
-        #output( command,_command_dictionary[command].numoperands,'result is not None',str(_operand_stack), str(result))
-        _operand_stack.append(result)
-        #output( 'after command: ',str(_operand_stack))
-    if len(_operand_stack):
-        output( len(_operand_stack), 'operands left on the stack.' )
-        
-    pcbnew.UpdateUserInterface()
-    return _operand_stack
     # viasbb_selected = filter(lambda x: isinstance(x,pcbnew.VIA_BLIND_BURIED),tracks_selected)
     # viasthrough_selected = filter(lambda x: isinstance(x,pcbnew.VIA_THROUGH),tracks_selected)
     # viasmicrovia_selected = filter(lambda x: isinstance(x,pcbnew.VIA_MICROVIA),tracks_selected)
