@@ -3,13 +3,58 @@ from collections import defaultdict, Counter
 from itertools import compress,izip, cycle
 import pcbnew
 import time
-import os
+import os, sys
 import math
 from textwrap import wrap
 import wx
 from wxpointutil import wxPointUtil
 import kicommand_gui
-
+#
+#  
+#      +++---+---++---+---+++---+---++---+---+++
+#      +++---+---++---+---+++---+---++---+---+++
+#      +++---+---++---+---+++---+---++---+---+++
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      +++---+---++---+---+++---+---++---+---+++
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      +++---+---++---+---+++---+---++---+---+++
+#      +++---+---++---+---+++---+---++---+---+++
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      +++---+---++---+---+++---+---++---+---+++
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      +++---+---++---+---+++---+---++---+---+++
+#      +++---+---++---+---+++---+---++---+---+++
+#      +++---+---++---+---+++---+---++---+---+++
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      +++---+---++---+---+++---+---++---+---+++
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      +++---+---++---+---+++---+---++---+---+++
+#      +++---+---++---+---+++---+---++---+---+++
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      +++---+---++---+---+++---+---++---+---+++
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      |||   |   ||   |   |||   |   ||   |   |||
+#      +++---+---++---+---+++---+---++---+---+++
+#      +++---+---++---+---+++---+---++---+---+++
+#      +++---+---++---+---+++---+---++---+---+++
+#
+# Select all line segments and connect closest edges to make a closed polygon:
+# drawings DRAWSEGMENT filtertype copy GetShapeStr call Line = filter copy selected connect
 
 # drawings selected 465,30 mm pcbnew wxPoint callargs 100 zip2 Rotate callargs
 
@@ -160,8 +205,12 @@ class gui(kicommand_gui.kicommand_panel):
             #output(str(self.combolist))
             self.entrybox.Update()
         except Exception as e:
-            wx.MessageDialog(self.GetParent(),"Error 1: %s"%str(e)).ShowModal()
-            
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(exc_type, fname, exc_tb.tb_lineno)  
+            output(str(e))
+            wx.MessageDialog(self.GetParent(),"Error 1 on line %s: %s"%
+               (exc_tb.tb_lineno,str(e))).ShowModal()
 
 class aplugin(pcbnew.ActionPlugin):
     """implements ActionPlugin"""
@@ -267,7 +316,14 @@ def run(commandstring):
             continue
 
         numop = _command_dictionary[command].numoperands
-        result = _command_dictionary[command].execute(_operand_stack[-numop:])
+        #output('checking number of args')
+        if len(_operand_stack) < numop:
+            raise TypeError('%s expects %d arguments on the stack.'%(command,numop))
+        #output('num op = %d %s'%(numop,str(_operand_stack[-numop:])))
+        if numop == 0:
+            result = _command_dictionary[command].execute([])
+        else:
+            result = _command_dictionary[command].execute(_operand_stack[-numop:])
         #output( '1: ',str(_operand_stack))
         if numop != 0:
             _operand_stack = _operand_stack[:-numop]
@@ -289,7 +345,10 @@ def retNone(function,args):
     function(args)
 
 def UNDOCK():
-    aplugin.g.Float() #mgr.GetPane(text1).Float()
+    wx.aui.AuiManager.GetManager(aplugin.g).GetPane(aplugin.g).Float()
+    # wx.aplugin.g.Float() #mgr.GetPane(text1).Float()
+    # self.mgr.GetPane(text1).Float()
+    # wx.aui.AuiManager.GetPane(wx.aplugin.g, item)
 def STACK():
     for obj in _operand_stack:
         output(obj)
@@ -374,30 +433,34 @@ def draw_segmentlist(input,layer=pcbnew.Eco2_User,thickness=0.015*pcbnew.IU_PER_
     return allsegments
 # r('0 FLOAT LIST 0 FLOAT LIST 100 MM LIST 100 MM LIST APPEND APPEND APPEND DRAWSEGMENTS')
 # r('0,0,100,100 MM DRAWSEGMENTS')
+def close_enough(a,b):
+    return abs(a-b)<(5*32) 
 def REGULAR(dseglist):
     """create a regular polygon from the set of connected and closed segments"""
     ordered = order_segments(dseglist)
+    ordered = ordered[0]
     
-    for seg in dseglist:
-        output( "s,e=",seg.GetStart(),seg.GetEnd())
-    for seg in ordered:
-        output( "ordered s,e=",seg.GetStart(),seg.GetEnd())
+    # for seg in dseglist:
+        # output( "s,e=",get_ds_ends(seg))
+    # output('len ordered=',len(ordered))
+    # for seg in ordered:
+        # output( "ordered s,e=",get_ds_ends(seg))
 
     sidelength = 0
     for seg in dseglist:
-        sidelength += wxPointUtil.distance(seg.GetStart(),seg.GetEnd())
+        sidelength += wxPointUtil.distance(*get_ds_ends(seg))
 
     # positive polarity is this end is common to the next seg.
     polarity = []
-    e = ordered[0].GetEnd()
+    s,e = get_ds_ends(ordered[0]) # only need e here
     for i in range(len(ordered)-1):
-        sn = ordered[(i+1)%len(ordered)].GetStart()
-        en = ordered[(i+1)%len(ordered)].GetEnd()        
-        polarity.append((e[0] == sn[0] and e[1] == sn[1]) or (e[0] == en[0] and e[1] == en[1]))
+        sn,en = get_ds_ends(ordered[(i+1)%len(ordered)])
+        polarity.append((close_enough(e[0],sn[0]) and close_enough(e[1],sn[1])) or 
+                        (close_enough(e[0],en[0]) and close_enough(e[1],en[1])))
         e = en
     polarity.append(polarity[0])
     numsides = len(dseglist)
-    output( 'sides = ',numsides)
+    #output( 'sides = ',numsides)
     sidelength = sidelength / numsides
     angle = 2*math.pi / numsides
     
@@ -409,13 +472,9 @@ def REGULAR(dseglist):
     angleincrement = 2*math.pi/numsides
     for i in range(len(ordered)-1):
         if polarity[i]:
-            anchor = ordered[i].GetStart()
-            free = ordered[i].GetEnd()
+            anchor,free = get_ds_ends(ordered[i])
         else:
-            anchor = ordered[i].GetEnd()
-            free = ordered[i].GetStart()
-
-         
+            free,anchor = get_ds_ends(ordered[i])
         
         if i == 0:
             firstanchor = anchor
@@ -424,40 +483,71 @@ def REGULAR(dseglist):
             #wxPointUtil.scale(vector*sidelength/mag(vector))
 
         angle = startangle+2*math.pi*i/numsides
-        output( 'anchor,free,angle=',anchor,free,angle*180/math.pi)
+        # output( 'anchor,free,angle=',anchor,free,angle*180/math.pi)
         vector = wxPointUtil.towxPoint(sidelength,angle)
 
         endpoint = anchor+vector
-
+        # TODO: update to work with S_ARC
         if polarity[i]:
             ordered[i].SetEnd(endpoint)  
-            if i==0:
-                output( 'setend')
+            # if i==0:
+                # output( 'setend')
         else:
             ordered[i].SetStart(endpoint)
-            if i==0:
-                output( 'setstart')
+            # if i==0:
+                # output( 'setstart')
         if polarity[i+1]:
             ordered[i+1].SetStart(endpoint) 
-            output( 'setstart')
+            # output( 'setstart')
         else:
             ordered[i+1].SetEnd(endpoint)
-            output( 'setend')
+            # output( 'setend')
 
         # ordered[i].SetEnd(endpoint) if polarity[i] else ordered[i].SetStart(endpoint)
         # ordered[i+1].SetStart(endpoint) if polarity[i+1] else ordered[i+1].SetEnd(endpoint)
 #    ordered[-1].SetEnd(firstanchor) if polarity[-1] else ordered[-1].SetStart(firstanchor)
-    
+def get_ds_ends(dseg):
+    shape = dseg.GetShape()
+    if shape == pcbnew.S_SEGMENT:
+        return dseg.GetStart(), dseg.GetEnd()
+    elif shape == pcbnew.S_ARC:
+        # Start, Center, Angle define the S_ARC
+        start = dseg.GetArcStart()
+        center = dseg.GetCenter()
+        angle = dseg.GetAngle()/10.0
+        radians = angle*math.pi/180
+        radians = dseg.GetAngle() * math.pi / 1800
+        # Get vector C->S = VCS
+        # Rotate(S - C, CCW Angle) + C = new end point
+        #b=VC; a=VR; b+a = VS;  => VR = VS - VC
+        CS = start-center
+        CE = wxPointUtil.rotatexy(CS,radians)
+        #VS = a+b; VC=b VCS=a
+        end = CE + center
+        return start, end
+        # Also .GetArcEnd()
+    elif shape == pcbnew.S_CURVE:
+        output  ('Warning: KiCommand cannot determine S_CURVE end points. Skipping.')
+    else:
+        output('Warning: There are no endpoints to %s'%dseg.GetShapeStr())
+        return None
+   
+    return dseg.GetStart(), dseg.GetEnd()
+def get_drawsegment_points(dseglist):
+    return dseg.GetStart(), dseg.GetEnd()
 def CONNECT(dseglist):
     """given a list of almost-connected DRAWSEGMENTs, move their endpoints such that they are coincident. It is assumed
     that each segment connects to two others, except perhaps the 'end' segments."""
 
+    # put all points of start and end into a dictionary
+    # where value = segment
     #output( dseglist)
     points = defaultdict(set)
     #dsegse = defaultdict(set)
     for dseg in dseglist:
-        s=dseg.GetStart()
-        e=dseg.GetEnd()
+        s,e = get_ds_ends(dseg)
+        s = point_round128(s)
+        e = point_round128(e)
         st = (s[0],s[1])
         et = (e[0],e[1])
         points[st].add(dseg)
@@ -472,6 +562,10 @@ def CONNECT(dseglist):
 
     # distances2 contains list of points and distance2s from the corresponding point in unconnected.
     distances2 = defaultdict(list)
+    # d2 key is rounded point;
+    #   [key][i] is a tuple
+    #   [key][i][0] is the other point (rounded) and 
+    #   [key][i][1] is the distance
     for i,p in enumerate(unconnected):
         distances2[p] = \
         [(unconnected[j],wxPointUtil.distance2(unconnected[i],unconnected[j])) for j in range(0,len(unconnected)) if i!=j] # 0 should be i+1
@@ -482,77 +576,184 @@ def CONNECT(dseglist):
         # (s[0],s[1])
         # (e[0],e[1])
     
-      
+
+    # now sort the unconnected points' distances to each other
     for distanceslist in distances2.values():
         distanceslist.sort(key=lambda dist:dist[1])
 
     # for i in unconnected:
         # output( '\n',i,':')
-    for p,d in distances2.iteritems():
-        output( '\n',p)
-        output( '\t',d)
+    # for p,d in distances2.iteritems():
+        # output( '\n',p)
+        # output( '\t',d)
         
-    output( "distances2 = ",distances2.keys())
+    # output( "distances2 = ",distances2.keys())
     pointset = set(points.keys())
     
     for point in unconnected:
     #for point in points.keys():
-        output( "point = ",point)
+        # output( "point = ",point)
         if point not in pointset:
             continue
         # If the two points are each others closest points, then connect them.
         
         point2 = distances2[point][0][0]
-        output( 'p  : ',point,)
-        output( 'p2 : ',point2,)
-        output( 'dp : ',distances2[point][0][0],)
-        output( 'dp2: ',distances2[point2][0][0])
+        # output( 'p  : ',point,)
+        # output( 'p2 : ',point2,)
+        # output( 'dp : ',distances2[point][0][0],) # this should be point2
+        # output( 'dp2: ',distances2[point2][0][0]) # this should be point1
         
         if point == distances2[point2][0][0]:
             newpoint = point
-            for pchange in point,point2:
+            for pchange,newpoint in ((point,point2),(point2,point)):
+                try: pointset.remove(pchange)
+                except: pass
+                try: pointset.remove(newpoint)
+                except: pass
                 #seg = points[pchange][0] # should be only one segment in the list for this point.
                 (seg,) = points[pchange] # get the one element in the set
-                segpoint = seg.GetStart()
-                segstart = seg.GetStart()
-                segend = seg.GetEnd()
-                if segstart[0] == pchange[0] and segstart[1] == pchange[1]:
-                    seg.SetStart(pcbnew.wxPoint(newpoint[0],newpoint[1]))
-                elif segend[0] == pchange[0] and segend[1] == pchange[1]:
-                    seg.SetEnd(pcbnew.wxPoint(newpoint[0],newpoint[1]))
-                else:
-                    output( "Warning, bug in code.: ",pchange, segstart, segend)
-                pointset.remove(pchange)
+                if seg.GetShapeStr() != 'Line':
+                    continue
+                segstart,segend = get_ds_ends(seg)
+                segstart = point_round128(segstart)
+                segend = point_round128(segend)
+                # here we reset one side of the DRAWSEGMENT or the other.
+                # For a line (i.e. S_SEGMENT), we simply change the
+                # Start or End point.
+                # for an arc, it's a little harder.
+                # For example, if the start changes then the end will change
+                # unless the center point or the angle are changed.
+
                 
+                if segstart[0] == pchange[0] and segstart[1] == pchange[1]:
+                    # output('setstart %s %s %s'%(seg.GetShapeStr(),str(get_ds_ends(seg)),str(seg)))
+                    seg.SetStart(pcbnew.wxPoint(newpoint[0],newpoint[1]))
+                    # output('setstart %s %s %s'%(seg.GetShapeStr(),str(get_ds_ends(seg)),str(seg)))
+                elif segend[0] == pchange[0] and segend[1] == pchange[1]:
+                    # output('setend %s %s %s'%(seg.GetShapeStr(),str(get_ds_ends(seg)),str(seg)))
+                    seg.SetEnd(pcbnew.wxPoint(newpoint[0],newpoint[1]))
+                    # output('setend %s %s %s'%(seg.GetShapeStr(),str(get_ds_ends(seg)),str(seg)))
+                # else:
+                    # output( "Warning, bug in code.: ",pchange, segstart, segend)
+                break
     # for i in range(len(unconnected)):
         # output( '\n',unconnected[i],':')
         # for d in distances2[i]:
             # output( '\t',d)
-    
+def is_connected(w,v):
+    return wxPointUtil.distance2(w,v) < 200*200
+
 def order_segments(dseglist):
+    # fixed with gridboxes
+    segs_by_box = defaultdict(set)
+    boxes_by_seg = {}
+
+    for seg in dseglist:
+        s,e = get_ds_ends(seg)
+        gbs = gridboxes(s)
+        gbe = gridboxes(e)
+        # any of the boxes points to the opposite end of the segment
+        sdict={}
+        for b in gbs:
+            sdict[b] = e
+            # output(str(b))
+            segs_by_box[b].add(seg)
+        edict={}
+        for b in gbe:
+            # output(str(b))
+            edict[b] = s
+            segs_by_box[b].add(seg)
+            
+        boxes_by_seg[seg] = {s:sdict,e:edict}
+        """bbs is a structure that you can look up all the boxes the 
+        opposing point of the segment exists in."""
+    # output ('sbb keys:')
+    for box,segs in segs_by_box.iteritems():
+        seglist=list(segs)
+        # output(str(box),len(segs))
+        # for seg in seglist:
+            # output('\t',get_ds_ends(seg))
+    # now create a structure where a segment points to all connected segments
+    # output('sbb %s'%str(segs_by_box))
+    # output('bbs %s'%str(boxes_by_seg))
+    connected = defaultdict(set)
+    for b,seglist in segs_by_box.iteritems():
+        for seg1 in seglist:
+            for seg2 in seglist:
+                if seg1 != seg2:
+                    # output('adding')
+                    connected[seg1].add(seg2)
+                    connected[seg2].add(seg1)
+    # output('connected:')
+    # for seg,seglist in connected.iteritems():
+        # output('%s'%str(get_ds_ends(seg)))
+        # for cseg in seglist:
+            # output('\t%s'%str(get_ds_ends(cseg)))
+    # now a sanity check
+    for seg,seglist in connected.iteritems():
+        if len(seglist) > 2:
+            # doesn't capture three segments at one box/point
+            output('Error: segment connected to more than 2 other segments: %s'%
+                str(get_ds_ends(seg)))
+            return dseglist
+    
+    segset = set()
+    ordered_and_split = [[]]
+    for seg in dseglist:
+        currentseg = seg
+        lastseg = seg
+        while currentseg is not None and currentseg not in segset:
+            segset.add(currentseg)
+            csegs = list(connected.get(currentseg,None))
+            # csegs should be one or two segments
+            if lastseg in csegs:
+                csegs.remove(lastseg)
+            # output('added to oas')
+            ordered_and_split[-1].append(currentseg)
+            lc = len(csegs)            
+            if lc == 0:
+                ordered_and_split.append([])
+                currentseg = None
+            elif lc == 1:
+                lastseg = currentseg
+                currentseg = csegs[0]
+            else: # lc = > 1
+                output('Error: segment connected to more than 2 other segments: %s'%
+                    str(get_ds_ends(currentseg)))
+    if not ordered_and_split[-1]:
+        ordered_and_split.pop()
+    return ordered_and_split
+
+    
+def order_segments_old(dseglist):
+    # TODO: 
+    # output('len(dseglist)=%s'%len(dseglist))
     segs_by_point = defaultdict(set)
     points_by_seg = {}
-    for seg in dseglist:
-        output( "segment: ",seg.GetStart(), seg.GetEnd())
+    # for seg in dseglist:
+        # output( "segment: ",get_ds_ends(seg))
     #output( "dseglist = ",list(dseglist))
     
     for seg in dseglist:
-        s=seg.GetStart()
+        s,e = get_ds_ends(seg)
+        s = point_round128(s)
+        e = point_round128(e)
         st=(s[0],s[1])
-        e=seg.GetEnd()
         et=(e[0],e[1])
         points_by_seg[seg] = {st:et,et:st}
 
         #output( seg)
-        for p in seg.GetStart(),seg.GetEnd():
+        s,e = get_ds_ends(seg)
+        for p in s,e:
+            p = point_round128(p)
             segs_by_point[(p[0],p[1])].add(seg)
 
     if not len(points_by_seg):
         return
 
-    for p,segs in segs_by_point.iteritems():
-        for seg in segs:
-            output( "s_by_p point ",p,"seg ",seg.GetStart(),seg.GetEnd())
+    # for p,segs in segs_by_point.iteritems():
+        # for seg in segs:
+            # output( "s_by_p point ",p,"seg ",get_ds_ends(seg))
     # find first lonely vertex
     #output( segs_by_point)
     for currentpoint,seglist in segs_by_point.iteritems():
@@ -576,11 +777,49 @@ def order_segments(dseglist):
         except:
             break
     return ordered
+
+def MAKEANGLE(dseglist,degrees):
+    output('makeangle not implemented.')
+    return dseglist
     
 def draw_arc_to_segments(radius,dseglist):
-    ordered = order_segments(dseglist)
-    for i in range(len(ordered)-1):
-        draw_arc_to_lines(radius[0],ordered[i],ordered[i+1])
+    # output('len(segments)=%s'%len(dseglist))
+
+    orderedlol = order_segments(dseglist)
+    # output('len(orderedlol)=%s'%len(orderedlol))
+    for ordered in orderedlol:
+        for i in range(len(ordered)-1):
+            draw_arc_to_lines(radius[0],ordered[i],ordered[i+1])
+def ANGLE(dseglist):
+    angles = []
+    for seg in dseglist:
+        s,e = get_ds_ends(seg)
+        v=e-s
+        angles.append( -math.atan2(v[1],v[0]) * 180/math.pi )
+
+    return angles
+    
+def ROTATE(dseglist,angle):
+    angle = float(angle)
+    allpoints = []
+    for seg in dseglist:
+        allpoints.extend(get_ds_ends(seg))
+    xcenter = 0
+    ycenter = 0
+    for p in allpoints:
+        xcenter += p[0]
+        ycenter += p[1]
+    n = len(allpoints)
+    center = pcbnew.wxPoint(xcenter / n, ycenter / n)
+    for seg in dseglist:
+        shape = seg.GetShape()
+        if shape == pcbnew.S_SEGMENT:
+            seg.SetStart(pcbnew.wxPoint(*rotate_point(seg.GetStart(),center,angle,ccw=True)))
+            seg.SetEnd(pcbnew.wxPoint(*rotate_point(seg.GetEnd(),center,angle,ccw=True)))
+        if shape == pcbnew.S_ARC:
+            seg.SetCenter(pcbnew.wxPoint(*rotate_point(seg.GetCenter(),center,angle,ccw=True)))
+        if shape == pcbnew.S_CIRCLE:
+            seg.SetCenter(pcbnew.wxPoint(*rotate_point(seg.GetCenter(),center,angle,ccw=True)))
         
 def lines_intersect(p,q,w,v):
     # get intersection
@@ -591,11 +830,11 @@ def lines_intersect(p,q,w,v):
     # intersection = (p+tr = q+us)
     # dot vx wy - vy wx
     drs = wxPointUtil.dot_other(r,s)
-    output( "drs,r,s=",drs, r, s)
+    # output( "drs,r,s=",drs, r, s)
     qmp = q-p
     t = wxPointUtil.dot_other(qmp,s)/ float(drs)
     u = wxPointUtil.dot_other(qmp,r)/ float(drs)
-    output( "p,q,r,s,drs,qmp,t,u ",p,q,r,s,drs,qmp,t,u)
+    # output( "p,q,r,s,drs,qmp,t,u ",p,q,r,s,drs,qmp,t,u)
     intersection = p+wxPointUtil.scale(r,t) # ,q+wxPointUtil.scale(s,u))
     i2 = q + wxPointUtil.scale(s,u)
     
@@ -611,7 +850,8 @@ def lines_intersect(p,q,w,v):
     x4334 = (x4*y3-x3*y4)
 
     divisor = (x2-x1)*(y4-y3)-(x4-x3)*(y2-y1)
-
+    if divisor == 0:
+        return None
     xi = (x2112*(x4-x3) - x4334*(x2-x1))/divisor
     yi = (x2112*(y4-y3) - x4334*(y2-y1)) / divisor
 
@@ -626,7 +866,7 @@ def draw_arc_to_lines(radius,pqseg,wvseg):
     v=wvseg.GetEnd()
     
     # w = p+r; v=q+s
-    output( radius,p,q,w,v)
+    # output( radius,p,q,w,v)
     #draw_segment(p[0],p[1],q[0],q[1],layer=pcbnew.Eco1_User)
     #draw_segment(w[0],w[1],v[0],v[1],layer=pcbnew.Eco1_User)
 
@@ -639,7 +879,7 @@ def draw_arc_to_lines(radius,pqseg,wvseg):
     if intersection is None:
         intersection = lines_intersect(p,q,w,v)
         #output( "intersection = ",intersection,"; i2 = ",i2)
-    output( "intersection,p,q,w,v = ",intersection, p,q,w,v)
+    # output( "intersection,p,q,w,v = ",intersection, p,q,w,v)
     # find the closest endpoint on each line to the intersection.
     dp = wxPointUtil.distance2(intersection,p)
     dq = wxPointUtil.distance2(intersection,q)
@@ -655,15 +895,15 @@ def draw_arc_to_lines(radius,pqseg,wvseg):
         wvswapped = True
     pq,pqswapped = ((p,q),False) if dp<dq else ((q,p),True)
 
-    output( 'pq,wv=', pq,wv)
+    # output( 'pq,wv=', pq,wv)
     # draw_segment(wv[1].x,wv[1].y,intersection.x,intersection.y)
     # draw_segment(pq[1].x,pq[1].y,intersection.x,intersection.y)
     # angle between lines, radians
-    output( 'vi ',wv[1]-intersection, '; qi ',pq[1]-intersection)
-    output( 'dot ',wxPointUtil.dot_other(wv[1]-intersection,pq[1]-intersection))
+    # output( 'vi ',wv[1]-intersection, '; qi ',pq[1]-intersection)
+    # output( 'dot ',wxPointUtil.dot_other(wv[1]-intersection,pq[1]-intersection))
     # tangentpoints
     # scale(wxPointUtil.unit(wv[1]-intersection)
-    output( 'i3=',intersection)
+    # output( 'i3=',intersection)
     vi = wv[1]-intersection
     qi = pq[1]-intersection
     # note that with atan2
@@ -701,13 +941,13 @@ def draw_arc_to_lines(radius,pqseg,wvseg):
         
     # determine order, 'internal' angle defined by less than 180
     #theta = math.acos(wxPointUtil.dot_other(wv[1]-intersection,pq[1]-intersection))
-    output( 'awv,apq = ',awv*180/math.pi,apq*180/math.pi)
+    # output( 'awv,apq = ',awv*180/math.pi,apq*180/math.pi)
     #theta = (awv + apq) % 2*math.pi
 
-    output( 'theta= ',theta)
+    # output( 'theta= ',theta)
     #  CB/PB=tan(theta/2) => dist(intersection,tangent_line) = radius/tan(theta/2.0)
     distance_intersection_to_tangent = abs(radius/math.tan(theta/2.0))
-    output( 'dist int to tan',distance_intersection_to_tangent)
+    # output( 'dist int to tan',distance_intersection_to_tangent)
     # unit = wxPointUtil.unit(vi) - wxPointUtil.unit(qi)
     # distance_intersection_to_tangent = radius/math.tan(unit[0],unit[1])
     # output( 'dist int to tan',distance_intersection_to_tangent)
@@ -725,7 +965,7 @@ def draw_arc_to_lines(radius,pqseg,wvseg):
     # draw_segment(arcstart[0],arcstart[1],center[0],center[1])
     
     thickness = int((pqseg.GetWidth()+wvseg.GetWidth())/2.0)
-    output( thickness, pqseg.GetWidth(), wvseg.GetWidth())
+    # output( thickness, pqseg.GetWidth(), wvseg.GetWidth())
     
     
     if theta%(2*math.pi) > math.pi:
@@ -807,18 +1047,18 @@ def draw_arc_to_lines(radius,pqseg,wvseg):
     # output( 'mag = ',wxPointUtil.mag(leftfirst[0][1]-intersection))
     # lfadd=lf01i
     # centerlinepoint = wxPointUtil.scale(unittuple(lf01i) + unittuple(lf11i),0.5)
-    output( 'centerlinepoint, intersection = ',centerlinepoint,intersection)
+    # output( 'centerlinepoint, intersection = ',centerlinepoint,intersection)
     centervector = centerlinepoint - intersection
     cangle = -math.atan2(centervector[1],centervector[0])
     #draw_segment(centerlinepoint[0],centerlinepoint[1],intersection[0],intersection[1],layer=pcbnew.Dwgs_User)
     
-    output( 'anglebase,cangle,a/2 = ',anglebase*180/math.pi,cangle*180/math.pi,(awv+apq)*90/math.pi,"   awv,apq = ",awv*180/math.pi,apq*180/math.pi )
+    # output( 'anglebase,cangle,a/2 = ',anglebase*180/math.pi,cangle*180/math.pi,(awv+apq)*90/math.pi,"   awv,apq = ",awv*180/math.pi,apq*180/math.pi )
     arcstart = tangentfirst[1]
     # angle = ((awv-apq)*180/math.pi)
 
-    output( 'i4=',intersection)
+    # output( 'i4=',intersection)
 
-    output( 'wvtpoint,pqtpoint ',wvtpoint,pqtpoint)
+    # output( 'wvtpoint,pqtpoint ',wvtpoint,pqtpoint)
     # # # # # if wvswapped:
         # # # # # wvseg.SetEnd(wvtpoint)
     # # # # # else:
@@ -846,13 +1086,13 @@ def draw_arc_to_lines(radius,pqseg,wvseg):
     # r,tr = math.sqrt(math.pow(x,2),math.pow(y,2)), math.arctan(y/x)
     # r,td = math.sqrt(math.pow(x,2),math.pow(y,2)), math.arctan(y/x)*180/math.pi
 
-    output( 'i5=',intersection)
+    # output( 'i5=',intersection)
     # unit = scale(w,1/dist(w))
     wvtpi = wvtpoint-intersection
     pqtpi = pqtpoint-intersection
     
     lefttpi = arcstart-intersection
-    output( 'center calc info: ',wvtpi,)
+    # output( 'center calc info: ',wvtpi,)
     # center = pqtpoint+wxPointUtil.scale(pcbnew.wxPoint(pqtpi[1],-pqtpi[0]),radius/
                                         # math.sqrt(pqtpi[0]*pqtpi[0]+pqtpi[1]*pqtpi[1]))
 
@@ -866,13 +1106,13 @@ def draw_arc_to_lines(radius,pqseg,wvseg):
                                         math.sqrt(wvtpi[0]*wvtpi[0]+wvtpi[1]*wvtpi[1]))
 
     #draw_segment(center[0],center[1],intersection[0],intersection[1],layer=pcbnew.Dwgs_User)
-    output( 'i6=',intersection)
+    # output( 'i6=',intersection)
     ci = center - intersection
     acenter = -math.atan2(ci[1],ci[0])
-    output( 'awv,center,apq = ',awv,acenter,apq)
-    output( 'pqtpoint, intersection = ',pqtpoint,intersection)
+    # output( 'awv,center,apq = ',awv,acenter,apq)
+    # output( 'pqtpoint, intersection = ',pqtpoint,intersection)
     pqtpi = pqtpoint-intersection
-    output( 'pqtpi = ',pqtpi)
+    # output( 'pqtpi = ',pqtpi)
     center3 = pqtpoint+wxPointUtil.scale(wxPointUtil.normal(pqtpi),radius/
                                         math.sqrt(pqtpi[0]*pqtpi[0]+pqtpi[1]*pqtpi[1]))
 
@@ -885,14 +1125,14 @@ def draw_arc_to_lines(radius,pqseg,wvseg):
     # wvtpoint-intersection+normal()
     
     #intersect_to_pqtpoint is adjacent
-    output( "angle,s,c=",angle, arcstart,center)
+    # output( "angle,s,c=",angle, arcstart,center)
     # draw_segment(arcstart[0],arcstart[1],center[0],center[1])
     # draw_segment(wvtpoint[0],wvtpoint[1],center[0],center[1],layer=pcbnew.Eco1_User)
     # draw_segment(pqtpoint[0],pqtpoint[1],center[0],center[1],layer=pcbnew.Eco1_User)
     # draw_segment(pqtpoint[0],pqtpoint[1],wvtpoint[0],wvtpoint[1],layer=pcbnew.Eco1_User)
 
     thickness = int((pqseg.GetWidth()+wvseg.GetWidth())/2.0)
-    output( thickness, pqseg.GetWidth(), wvseg.GetWidth())
+    # output( thickness, pqseg.GetWidth(), wvseg.GetWidth())
     draw_arc(arcstart[0],arcstart[1],center[0],center[1],angle,layer=pqseg.GetLayer(),thickness=thickness)
     # 
     # C= math.tan(theta/2.0)
@@ -915,7 +1155,7 @@ def draw_arc(x1,y1,x2,y2,angle,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_P
     # ds.SetEnd(pcbnew.wxPoint(x2,y2))
     
     # Arc
-    output( angle,pcbnew.wxPoint(x1,y1),pcbnew.wxPoint(x2,y2), "thickness=",thickness)
+    # output( angle,pcbnew.wxPoint(x1,y1),pcbnew.wxPoint(x2,y2), "thickness=",thickness)
     ds.SetArcStart(pcbnew.wxPoint(x1,y1))
     ds.SetAngle(angle*10)
     ds.SetCenter(pcbnew.wxPoint(x2,y2))
@@ -1002,6 +1242,57 @@ def CALLLIST(modulelist,function):
     for m in modulelist:
         items.extend(getattr(m,function)())
     return items
+    
+def gridboxes(w,getdict=None,setdict=None,setelement=None):
+    """returns a set of grid boxes (upper left corners) that
+    correspond to point w
+    if getdict is set, then gridboxes is used to retreive its elements
+    if setdict is set, then gridboxes is used to set its elements"""
+    # 
+    # Put each point in 4 boxes.
+    # when searching, search 4 boxes.
+    # Union of all hits should be considered "connected"
+    #
+
+    # Min capture distance is increment away in any direction
+    # Max capture distance is +/- 4.25*increment away
+    #   (3 diagonals of increment square)
+    #
+    # Usage:
+    #
+    # for setting values:
+    # map(lambda x: seg_by_point[x].append(seg),gridboxes(point))
+    #
+    # for retrieving segs:
+    # seglist = []
+    # map(lambda x: seglist.extend(seg_by_point[x]),gridboxes(point))
+    #
+    round_bits = 5
+    increment = 1 << round_bits
+    mask = -1 << round_bits
+    
+    c1 = w[0] & mask
+    r1 = w[1] & mask
+    r0 = r1 - increment
+    c0 = c1 - increment
+    #output('rb=%d inc=%x mask=%x'%(round_bits,increment,mask))
+    # Boxes to place/search
+    boxes = ((c0,r0),(c0,r1),(c1,r0),(c1,r1))
+    if getdict is not None:
+        seglist = []
+        map(lambda x: seglist.extend(getdict[x]),boxes)
+        #output('seglist=%s'%str(seglist))
+        return seglist
+    if setdict is not None:
+        map(lambda x: setdict[x].append(setelement),boxes)
+        return None
+
+    return boxes
+    
+def point_round128(w):
+    mask = -1 << 5
+    #return w
+    return w.__class__(int(w[0])&mask,int(w[1])&mask)
 
 def REJOIN():
     # Moves the set of coniguous lines or tracks to match the single line already moved.
@@ -1026,13 +1317,13 @@ def REJOIN():
     # recast the end points as tuples
     lines_by_vertex = defaultdict(set) #{}
     for line in _operand_stack[-1]:
-        output( 'Connected: ',line)
+        # output( 'Connected: ',line)
         for p in (line.GetStart(),line.GetEnd()):
             lines_by_vertex[(p.x,p.y)].add(line)
             #lines_by_vertex.setdefault((p.x,p.y),set()).add(line)
             
-    for vertex,lines in lines_by_vertex.iteritems():
-        output( vertex,': ',lines)
+    # for vertex,lines in lines_by_vertex.iteritems():
+        # output( vertex,': ',lines)
         
     line_by_lonelyvertex = filter(lambda x: len(x[1])==1, lines_by_vertex.iteritems())
     
@@ -1046,9 +1337,9 @@ def REJOIN():
         else:
             connected_lines.append(line)
     _operand_stack.pop()
-    output( 'lonely',len(lonely_line),'; connected',len(connected_lines))
+    # output( 'lonely',len(lonely_line),'; connected',len(connected_lines))
     if len(lonely_line) != 1:
-        output( 'no loney_line')
+        # output( 'no loney_line')
         return
         
     lonely_line = lonely_line[0]
@@ -1073,27 +1364,143 @@ def REJOIN():
     # Now we have the vector of the Move, so Move the remaining lines.
     
 def CONNECTED(wholelist, initlist):
-    s = map(lambda x: (x.GetStart().x,x.GetStart().y),wholelist)
-    e = map(lambda x: (x.GetEnd().x,x.GetEnd().y),wholelist)
+    # Make generic and approximate
+    # output('1')
+
+    se = map(lambda x: get_ds_ends(x),wholelist)
+    #output(str(se))
+    # output('2a')
+    #output(str([list]))
+    # output('2b')
     d = defaultdict(list)
+    # output('3')
     for i,item in enumerate(wholelist):
-        d[s[i]].append(item)
-        d[e[i]].append(item)
-    # Now we have items by coordinates for fast lookup
+        # d[point_round128(se[i][0])].append(item)
+        # d[point_round128(se[i][1])].append(item)
+        # output('se[%d]= %s; item=%s'%(i,se[i],str(item)))
+        gridboxes(se[i][0],setdict=d,setelement=item)
+        gridboxes(se[i][1],setdict=d,setelement=item)
+        # s=point_round128(se[i][0])
+        # e=point_round128(se[i][1])
+        # output('s=%s'%str(s))
+        # output('e=%s'%str(e))
+        # output('s0=%s'%str(s[0]))
+        # output('s1=%s'%str(s[1]))
+        # d[tuple(s)].append(item)
+        # d[tuple(e)].append(item)
+    # output('4')
+    # k=d.keys()[0]
+    # output('d = '+str(len(d))+str((k,d[k])))
+    # for i in d.keys()[:10]:
+            
+        # output('key=%s val=%s'%(i,d[i]))
+    # s = map(lambda x: (x.GetStart().x,x.GetStart().y),wholelist)
+    # e = map(lambda x: (x.GetEnd().x,x.GetEnd().y),wholelist)
+    # d = defaultdict(list)
+    # for i,item in enumerate(wholelist):
+        # d[s[i]].append(item)
+        # d[e[i]].append(item)
+    # Now we have items by rounded coordinates for fast lookup
     i = 0
     retValue = list(initlist)
-    while i < len(retValue):
-        key=(retValue[i].GetStart().x,retValue[i].GetStart().y)
-        try: d[key].remove(retValue[i]) 
-        except: pass
-        retValue.extend(d[key])
-        key=(retValue[i].GetEnd().x,retValue[i].GetEnd().y)
-        try: d[key].remove(retValue[i]) 
-        except: pass
-        retValue.extend(d[key])
-        i += 1
-    return list(set(retValue))
+    retValueSet = set()
     
+    # output('initlist = '+str(initlist))
+    while i < len(retValue):
+        if i > 1000:
+            break
+        #output('rV len=%s'%len(retValue))
+        se = get_ds_ends(retValue[i])
+        #output(str(se))
+        
+        #s=point_round128(se[0])
+        # output('s = '+str(s))
+        #key=tuple(s) # start x and y
+        #key=(retValue[i].GetStart().x,retValue[i].GetStart().y)
+        # output('key = %s'%str(key))
+        try: d[key].remove(retValue[i]) 
+        except: pass
+        # output('found connection 1')
+        
+        # retValue.extend(d[key])
+        retValue.extend(gridboxes(se[0],getdict=d))
+        #e=point_round128(se[1])
+        # output('e = '+str(e))
+        #key=tuple(e) # end x and y
+        #key=(retValue[i].GetEnd().x,retValue[i].GetEnd().y)
+        try: d[key].remove(retValue[i]) 
+        except: pass
+        # output('found connection 2')
+        newset = set(gridboxes(se[1],getdict=d))
+        
+        for member in newset:
+            if member not in retValueSet:
+                # output('adding member')
+                #retValue.append(member)
+                retValueSet.add(member)
+        i += 1
+    # output('i=%d'%i)
+    return list(set(retValue)) # remove duplicates
+
+def bbintersect(seg1,seg2):
+    s1bb = seg1.GetBoundingBox()
+    s2bb = seg2.GetBoundingBox()
+    return True
+    
+def CUT():
+
+    cutees = filter(
+        lambda x: isinstance(x,pcbnew.DRAWSEGMENT) and x.GetShape() == pcbnew.S_SEGMENT,
+        pcbnew.GetBoard().GetDrawings())
+
+    cutter = filter(lambda x:x.IsSelected(),cutees)[0]
+    scutter,ecutter = get_ds_ends(cutter)
+    #output(str(cutter),len(cutees))
+    bb = cutter.GetBoundingBox()
+    cutl,cutr,cutt,cutb = bb.GetLeft(),bb.GetRight(),bb.GetTop(),bb.GetBottom()
+    within = []
+    for cutee in cutees:
+        if cutee == cutter:
+            # output('=')
+            continue
+        if not isinstance(cutee,pcbnew.DRAWSEGMENT):
+            continue
+        if cutee.GetShape() != pcbnew.S_SEGMENT:
+            continue
+        #output(get_ds_ends(cutee))
+        bb = cutee.GetBoundingBox()
+        segl,segr,segt,segb = bb.GetLeft(),bb.GetRight(),bb.GetTop(),bb.GetBottom()
+        if segr < cutl or segl > cutr or segb < cutt or segt > cutb:
+            continue
+        #output('!')
+
+        # Get intersection point
+        s,e = get_ds_ends(cutee)
+        intersect = lines_intersect(s,e,scutter,ecutter)
+        #output('intersect',intersect,'s',s,'e',e,'scut',scutter,'ecut',ecutter)
+        if intersect is None:
+            output('intersect returned None')
+            continue
+        
+        if ((s[0] < intersect[0] < e[0]) or (e[0] < intersect[0] < s[0])) and \
+        ((s[1] < intersect[1] < e[1]) or (e[1] < intersect[1] < s[1])) and \
+        ((scutter[0] < intersect[0] < ecutter[0]) or (ecutter[0] < intersect[0] < scutter[0])) and \
+        ((scutter[1] < intersect[1] < ecutter[1]) or (ecutter[1] < intersect[1] < scutter[1])):
+
+        # see if intersection point is within s and e
+        #if (s[0] < intersect[0] < e[0]) and (s[1] < intersect[1] < e[1]) and \
+           #(scutter[0] < intersect[0] < ecutter[0]) and (scutter[1] < intersect[1] < ecutter[1]):
+            newe = tuple(e)
+            cutee.SetEnd(intersect)
+            draw_segment(intersect[0],intersect[1],newe[0],newe[1],layer=cutee.GetLayer(),thickness=cutee.GetWidth())
+            #output('new segment',intersect, e)
+            #output('cut',s,e,'at',intersect)        
+        # within.append(cutee) 
+    #pcbnew.UpdateUserInterface()
+    #cutter.UnLink()
+    pcbnew.GetBoard().GetDrawings().Remove(cutter)
+    #cutter.DeleteStructure()
+    return None
 def DRAWPARAMS(c):
     t,w,h,l = c[0].split(',') \
     if isinstance(c[0],basestring) else c[0] \
@@ -1140,12 +1547,13 @@ def rotate_point(point,center,angle,ccw=True):
         # center=center[0]
     # except:
         # pass
-    output( 'pca: ',point,center,angle)
+    # output( 'pca: ',point,center,angle)
     #return None
     if ccw:
         mult = -1
     else:
         mult = 1
+    radians = mult*float(angle)*math.pi/180.0
     radians = mult*float(angle)*math.pi/180.0
     if not isinstance(point,pcbnew.wxPoint):
         point = pcbnew.wxPoint(point[0],point[1]) 
@@ -1154,13 +1562,14 @@ def rotate_point(point,center,angle,ccw=True):
     s = math.sin(radians)
     c = math.cos(radians)
     point = point - center
-    output( point)
+    # output( point)
     point =  pcbnew.wxPoint(point[0]*c - point[1]*s,point[0]*s + point[1]*c)
     point = point + center
+    # output('rotated ',str(point))
     return point
     
 def ROTATEPOINTS(points,center,angle):
-    output( 'c1: ',center, points)
+    # output( 'c1: ',center, points)
     center = convert_to_points(center)[0]
     points = convert_to_points(points)
     if not hasattr(angle,'__iter__'):
@@ -1168,11 +1577,11 @@ def ROTATEPOINTS(points,center,angle):
     # for ps,c in izip(points, cycle(center)):
         # newp = [rotate_point(p,c,float(angle)) for p in ps ]
     newps = []
-    output( 'cpsa: ',center,points, angle)
+    # output( 'cpsa: ',center,points, angle)
     for ps,c,a in izip(points, cycle(center),cycle(angle)):
         newps.append([rotate_point(p,c,float(a)) for p in ps])
 
-    output( 'c2:',center, points)
+    # output( 'c2:',center, points)
     return newps
 
 def CORNERS(c):
@@ -1287,13 +1696,19 @@ def EXPLAIN(commandstring,category=None):
                 # HELP(command,exact=True)
                 # printed.add(command)
 
+def HELPALL():
+    sorted = list(_command_dictionary.keys())
+    sorted.sort()
+    for command in sorted:
+        print_command_detail(command)
+        
 def print_command_detail(command):
-        k,v = command,_command_dictionary.get(command,None)
-        if not v:
-            return False
-        output(('%s (Category: %s)'%(k,v.category)))
-        output(('\t%s'%'\n'.join(['\n\t'.join(wrap(block, width=60)) for block in v.helptext.splitlines()])))
-        return True
+    k,v = command,_command_dictionary.get(command,None)
+    if not v:
+        return False
+    output(('%s (Category: %s)'%(k,v.category)))
+    output(('\t%s'%'\n'.join(['\n\t'.join(wrap(block, width=60)) for block in v.helptext.splitlines()])))
+    return True
 
 #def getcommand(command):
 def HELPMAIN():
@@ -1304,10 +1719,11 @@ def HELPMAIN():
     use one of the following commands in the Help category:""".split())
     output(('\t%s'%'\n'.join(['\n\t'.join(wrap(block, width=60)) for block in helptext.splitlines()])))
     output( 'All helpcat - For a list of all commands by category.')
-    output( 'COMMAND explain - For help on a specific COMMAND.')
+    output( "'COMMAND explain - For help on a specific COMMAND (be sure to include the single quote).")
+    output("helpall - for detailed help on all commands.")
     output()
     
-    commands = 'helpcat explain'.split()
+    commands = 'helpcat explain helpall'.split()
     # commands = filter(lambda c: c[1].category == 'Help', _command_dictionary.iteritems())
     # commands = [command[0] for command in commands]
     # commands.sort()
@@ -1463,16 +1879,21 @@ _command_dictionary = {
         ),
         
     # PCB Actions
-    'setselect': Command(1,lambda c: filter(lambda x: x.SetSelected(), c[0]),'Action',
+    'select': Command(1,lambda c: filter(lambda x: x.SetSelected(), c[0]),'Action',
         '[objects] Select the objects'),
-    'clearselect': Command(1,lambda c: filter(lambda x: x.ClearSelected(), c[0]),'Action',
+    'deselect': Command(1,lambda c: filter(lambda x: x.ClearSelected(), c[0]),'Action',
         '[objects] Deselect the objects'),
-    'rejoin': Command(0,lambda c: REJOIN(),'Action',
+    'rejoin': Command(0,lambda c: REJOIN(*c),'Action',
         'Using selected lines, move multiple connected lines to the isolated line.'),
-    'connect': Command(1,lambda c: CONNECT(c[0]),'Action',
+    'connect': Command(1,lambda c: CONNECT(*c),'Action',
         'Using selected lines, connect all vertices to each closest one.'),
     # Filter
-    'connected': Command(2,lambda c: CONNECTED(c[0],c[1]),'Filter',
+    'length': Command(1, lambda c: LENGTH(*c),'Geometry',
+        '[SEGMENTLIST] Get the length of each segment (works with '
+        'segment and arc types'),
+    'ends': Command(1, lambda c: get_ds_ends(*c),'Geometry',
+        'Get the end points of the drawsegment (works with segment and arc types'),
+    'connected': Command(2,lambda c: CONNECTED(*c),'Filter',
         '[WHOLE INITIAL] From objects in WHOLE, select those that are connected to objects in INITIAL (recursevely)'),
     'matchreference': Command(2,lambda c: filter(lambda x: x.GetReference() in c[1].split(','), c[0]),'Filter',
         '[MODULES REFERENCE] Filter the MODULES and retain only those that match REFERENCE'),
@@ -1494,9 +1915,11 @@ _command_dictionary = {
     '=': Command(2,lambda c: map(lambda x: x==c[1],c[0]),'Comparison',
         '[LIST VALUE] Create a LIST of True/False values corresponding to whether the values in LIST equal to VALUE (for use prior to FILTER)'),
 #x=lambda c: map(lambda x: float(x),c.split(',')) if isinstance(c,basestring) else map(lambda x: float(x),c)
-    'stack': Command(0,lambda c: STACK(),'Programming',
+    'undock': Command(0,lambda c: UNDOCK(*c),'Interface',
+        'Undock the window.'),
+    'stack': Command(0,lambda c: STACK(*c),'Programming',
         'Output the string representation of the objects on the stack'),
-    'print': Command(0,lambda c: PRINT(),'Programming',
+    'print': Command(0,lambda c: PRINT(*c),'Programming',
         'Output the string representation of the top object on the stack'),
     'builtins': Command(0,lambda c:  __builtins__,'Programming',
         'Output the __builtins__ Python object, giving access to the built in Python functions.'),
@@ -1505,7 +1928,7 @@ _command_dictionary = {
         # '[LIST] Get the start wxPoint from the LIST of DRAWSEGMENTS.'),
     # 'getend': Command(1,lambda c: [m.GetEnd() for m in c[0]],'Call',
         # '[LIST] Get the end wxPoint from the LIST of DRAWSEGMENTS.'),
-    'calllist': Command(2,lambda c: CALLLIST(c[0],c[1]),'Call',
+    'calllist': Command(2,lambda c: CALLLIST(*c),'Call',
         '[LIST FUNCTION] Execute python FUNCTION on each member of LIST.'
         'The FUNCTION must return a list of items (this is suitable'
         'for module functions such as GraphicalItems and Pads.'),
@@ -1572,7 +1995,7 @@ _command_dictionary = {
         '[OPERAND1 OPERAND2] Return the the floating point OPERAND1 * OPERAND2.'),
     '/f': Command(2,lambda c: float(c[0])/float(c[1]),'Numeric',
         '[OPERAND1 OPERAND2] Return the the floating point OPERAND1 / OPERAND2.'),
-    'sum': Command(1,lambda c: sum(c[0]),'Numeric',
+    'sum': Command(1,lambda c: sum(*c),'Numeric',
         '[LIST] Return the sum of all members in LIST.'),
 
     # Stack Manipulation
@@ -1581,7 +2004,7 @@ _command_dictionary = {
     #'copytop': Command(0,lambda c: list(_operand_stack[-1])),
     # 'copytop': Command(0,lambda c: _operand_stack[-1],'Stack',
         # 'Duplicate the top object on the stack.'),
-    'clear': Command(0,lambda c: CLEAR(),'Stack',
+    'clear': Command(0,lambda c: CLEAR(*c),'Stack',
         'Clear the stack.'),
     # Conversion
     #'float': Command(1,lambda c: float(c[0]),'Conversion'),
@@ -1615,7 +2038,7 @@ _command_dictionary = {
         'list of numbers.', ),
     'string': Command(1,lambda c: str(c[0]),'Conversion',
         '[OBJECT] Convert OBJECT to a string.'),
-    'dict': Command(2,lambda c: dict(zip(c[0], c[1])),'Conversion',
+    'dict': Command(2,lambda c: dict(zip(*c)),'Conversion',
         '[KEYS VALUES] Create a dictionary from KEYS and VALUES lists.'),
     #'mm': Command(1,lambda c: float(c[0])*pcbnew.IU_PER_MM,'Conversion'),
     'mm': Command(1,
@@ -1668,9 +2091,9 @@ _command_dictionary = {
         '\n\tExamples:\n\t0 pick - copies the top of the stack.\n'
         '\t1 pick - pushes a copy of the second item from the top of the stack onto the top of the stack.\n'
         ),
-    'swap': Command(0,lambda c: SWAP(),'Stack',
+    'swap': Command(0,lambda c: SWAP(*c),'Stack',
         'Switches the two top objects on the stack.'),
-    'zip2': Command(2,lambda c: zip(c[0],c[1]),'Stack',
+    'zip2': Command(2,lambda c: zip(*c),'Stack',
         '[LIST1 LIST2] Creates a list with parallel objects in LIST1 and '
         'LIST2 together at the same index.'),
     ':': Command(0,lambda c: setcompilemode(True),'Programming',
@@ -1687,11 +2110,13 @@ _command_dictionary = {
         'the semicolon (;). Run command SEEALL for more examples.'
         ),
     
-    'rotatepoints': Command(3,lambda c: ROTATEPOINTS(c[0],c[1],c[2]),'Geometry',
+    'rotatepoints': Command(3,lambda c: ROTATEPOINTS(*c),'Geometry',
         '[POINTS CENTER DEGREES] Rotate POINTS around CENTER. POINTS can be in '
         'multiple formats such as EDA_RECT or a list of one or more points.'),
+    'rotate': Command(2,lambda c: ROTATE(*c),'Geometry',
+        '[SEGMENTLIST DEGREES] Rotate segments by DEGREES around additive center.'),
         
-    'corners': Command(1,lambda c: CORNERS(c[0]),'Geometry',
+    'corners': Command(1,lambda c: CORNERS(*c),'Geometry',
         "[OBJECT] OBJECT is either a single object or a list of objects. "
         "Converts each OBJECT, either EDA_RECT or OBJECT's BoundingBox "
         "into vertices appropriate for drawsegments."
@@ -1707,10 +2132,10 @@ _command_dictionary = {
         '[OBJECTS LAYER] Moves all OBJECTS to LAYER.'),
     'pop': Command(1,lambda c: None,'Stack',
         'Removes the top item on the stack.'),
-    'see': Command(1,lambda c: print_userdict(c[0]),'Help',
+    'see': Command(1,lambda c: print_userdict(*c),'Help',
         '[COMMAND] Shows previously-defined COMMAND from the user dictionary. '
         'See the colon (:) command for more information.'),
-    'seeall': Command(0,lambda c: print_userdict(None),'Help',
+    'seeall': Command(0,lambda c: print_userdict(*c),'Help',
         '[COMMAND] Shows all previously-defined COMMANDs from the user dictionary. '
         'See the colon (:) command for more information.'),
     'time': Command(0,lambda c: time.asctime(),'System',
@@ -1718,8 +2143,21 @@ _command_dictionary = {
     # 'createtext': Command(2,lambda c: )
     #def draw_arc(x1,y1,x2,y2,radius,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER_MM):
 
-    'regular': Command(1,lambda c:REGULAR(c[0]),'Draw',""),
-    'round': Command(2,lambda c: draw_arc_to_segments(c[0],c[1]),'Draw',""),
+    'makeangle': Command(2,lambda c:MAKEANGLE(*c),'Draw',
+        '[SEGMENTLIST ANGLE] Make the selected segments form '
+        'the specified angle. arc radius is maintained, though angle and '
+        'position are modified, while line segments are moved '
+        'and stretched to be +/- n*angle specified.'),
+    'regular': Command(1,lambda c:REGULAR(*c),'Draw',
+        '[SEGMENTLIST] Move/stretch the selected segments into a regular '
+        'polygon (equal length sides, equal angles).'),
+    'cut': Command(0,lambda c: CUT(*c),'Draw',
+        'Cut all segments with the selected segment at the intersection.'),
+    'round': Command(2,lambda c: draw_arc_to_segments(*c),'Draw',
+        '[RADIUS SEGMENTLIST] Round the corners of connected line segments '
+        'within SEGMENTLIST by adding ARCs of specified RADIUS.'),
+    'angle': Command(1,lambda c: ANGLE(*c),'Geometry',
+        '[SEGMENTLIST] Return the angle of each segment in SEGMENTLIST.'),
     'drawarc':Command(1,lambda c: draw_arc(50*pcbnew.IU_PER_MM,50*pcbnew.IU_PER_MM,radius,angle,layer=_user_stacks['drawparams'][3],thickness=_user_stacks['drawparams'][0]),'Draw',
         ""),
     'drawsegments':Command(1,lambda c: draw_segmentlist(c[0],layer=_user_stacks['drawparams'][3],thickness=_user_stacks['drawparams'][0]),'Draw',
@@ -1731,21 +2169,23 @@ _command_dictionary = {
     'drawparams': Command(4,lambda c: DRAWPARAMS(c),'Draw',
         '[THICKNESS WIDTH HEIGHT LAYER] Set drawing parameters for future draw commands.\n'
         'Example: 1,5,5 MM F.Fab LAYERNUMS append drawparams'),
+    'helpall': Command(0,lambda c: HELPALL(),'Help',
+        "Shows detailed help on every command."),
     'help': Command(0,lambda c: HELPMAIN(),'Help',
         "Shows general help"),
-    'explain': Command(1,lambda c: EXPLAIN(c[0]),'Help',
+    'explain': Command(1,lambda c: EXPLAIN(*c),'Help',
         "[COMMAND] Shows help for COMMAND. COMMAND can be a comma separated list of commands (use a comma after a single command to prevent KiCommand from interpreting the command). The keyword 'All' shows help for all commands. You can precede the COMMAND by single quote mark so that it does not execute, or use the comma trick."),
     # 'helpcom': Command(0,lambda c: HELP(None),'Help',
         # "[COMMAND] Shows help for COMMAND. The keyword 'All' shows help for all commands. Precede the COMMAND by single quote mark (') so that it doesn't execute."),
-    'helpcat': Command(1,lambda c: HELPCAT(c[0]),'Help',
+    'helpcat': Command(1,lambda c: HELPCAT(*c),'Help',
         "[CATEGORY] Shows commands in CATEGORY. CATEGORY value of 'All' shows all categories."),
-    'pad2draw': Command(1,lambda c: pad_to_drawsegment(c[0]),'Draw',
+    'pad2draw': Command(1,lambda c: pad_to_drawsegment(*c),'Draw',
         '[PADLIST] draws outlines around pad on DRAWPARAMS layer.'),
-    'load': Command(1,lambda c: LOAD(c[0]),'Programming',
+    'load': Command(1,lambda c: LOAD(*c),'Programming',
         '[FILENAME] executes commands from FILENAME. relative to '
         '~/kicad/kicommand. Note that this command is not '
         'totally symmetric with the save command.'),
-    'save': Command(1,lambda c: SAVE(c[0]),'Programming',
+    'save': Command(1,lambda c: SAVE(*c),'Programming',
         '[FILENAME] saves the user dictionary into FILENAME relative to '
         '~/kicad/kicommand. Note that this command is not '
         'totally symmetric with the load command.'),
@@ -1770,7 +2210,7 @@ _user_dictionary = _dictionary['user']
 _user_stacks = {'drawparams':[0.3*pcbnew.IU_PER_MM,1*pcbnew.IU_PER_MM,1*pcbnew.IU_PER_MM,pcbnew.Dwgs_User]}
 # drawparams: thickness,width,height,layer
 
-def print_userdict(command):
+def print_userdict(command=None):
     for dictname in ['user','persist']:
         output( '\n',dictname,'Dictionary')
         if command:
@@ -1800,6 +2240,7 @@ _dictionary['persist']['not'] = "' ="
 _dictionary['persist']['copy'] = "0 pick"
 _dictionary['persist']['setselect'] = 'SetSelected call'
 _dictionary['persist']['clearselect'] = 'ClearSelected call'
+_dictionary['persist']['orthogonal'] = '90 makeangle'
 _dictionary['persist']['clearallselected'] = """
         modules copy GetReference call clearselect
         copy GetValue call clearselect
@@ -1845,7 +2286,7 @@ pshapesactual = filter(lambda x: x.startswith('PAD_SHAPE_'),dir(pcbnew))
 pshapes = ['PAD_SHAPE_CIRCLE','PAD_SHAPE_OVAL', 'PAD_SHAPE_RECT', 'PAD_SHAPE_ROUNDRECT', 'PAD_SHAPE_TRAPEZOID']
 
 if Counter(pshapesactual) != Counter(pshapes):
-    output( 'Warning! Expected Pad Shapes are different that command stack expects.')
+    output( 'Warning! Expected Pad Shapes are different than KiCommand expects.')
 
 
 def pad_to_drawsegment(pad):

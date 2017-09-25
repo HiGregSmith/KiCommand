@@ -31,27 +31,18 @@ Or the equivalent in MacOS or Linux
 (*there may be a user-level directory for such files, but I am not aware of it at the moment.*)
 2) Within KiCad pcbnew, select the Tools > External Plugins > Refresh Plugins
 3) The next time you start pcbnew, the *KiCommand* menu item will already be in
-the *External Plugins* menu so there is no need to *Refresh Plugins*.
+the *External Plugins* menu so there should be no need to *Refresh Plugins*.
 
 KiCommand dialog box is shown when the Tools > External Plugins > KiCommand menu item is selected.
 
 ### Self Documented Help
-Open the Script Console from the Tools menu. Then type
+When KiCommand starts up, it displays help information to get you started.
 
-    import kcstack
-    r=kcstack.runcommand
-    r("HELP")
-    
-This will display a short help message, including how to get a list of
-commands and how to get more detailed information about each command.
+Essentially, how to get more help with a variety of help commands.
 
-Another useful help commands are:
-- **r("Help helpcat")** - short list of help commands
-- **r("'help helpcom")** - details of commands with **HELP** in the name.
-Note the preceding single quote character.
-- **r("All helpcat")** - all commands listed by category
-- **r("helpall")** - all commands by category with their details in
-alphabetical order
+Commands are organized by category, and the main help commands display general
+help (**help**), command categories (**helpcat**), detail help on specific commands (**explain**),
+or detailed help of all commands (**helpall**)
 
 # Overview
 
@@ -80,7 +71,7 @@ exact types.
 And several disadvantages:
 
 - Built in commands have flexible argument types, while Python commands
-(accessed with *callargs*) may require careful argument manipulation.
+(accessed with **callargs**) may require careful argument manipulation.
 - Most commands are simple and straightforward, while complex commands are
 possible. The stack-based structure makes some complex strings difficult to
 decipher or create even for experienced programmers.
@@ -89,7 +80,6 @@ command strings are sometimes wordy.
 - There are currently no looping or conditional commands.
 - Full flexibility is only available with Python scripting. Command strings
 are a short simple interface for some object manipulation or interrogation.
-- (Currently) Strings with spaces cannot be created from scratch.
 
 ## Introduction to Command Strings and Programming Structure
 
@@ -100,7 +90,7 @@ are stored on top of any previously unused arguments or results, making those
 arguments and results available to a future commands. 
 
 This is implemented and often imagined as a *stack* structure.
-In this structure, the stack holds *values* (aka *operands*) that are used in
+In this structure, the stack holds *values* (aka *operands* or *arguments*) that are used in
 subsequent *commands*.
 
 Several important characteristics of the stack structure of programming:
@@ -112,26 +102,29 @@ Several important characteristics of the stack structure of programming:
 - results from previous commands, when unused, continue to exist on the stack
 and can be used for future commands. In this way, results from past commands
 build up to become arguments for future commands.
+- again, commands generally remove their arguments from the stack and return their results
+to the stack. If you need to execute several commands on the same argument, the
+**copy** and **swap** commands will be useful.
 
 ## Examples
 
-- **[modules]**
+- **modules**
     - return the list of modules
-- **[modules selected]**
+- **modules selected**
     - return the list of selected modules
-- **[modules selected clearselect]**
+- **modules selected clearselect**
     - unselect all selected modules
-- **[modules setselect]**
+- **modules setselect**
     - select all modules (this seems to have no visual effect)
-- **[pads setselect]**
+- **pads setselect**
     - select all pads
-- **[pads clearselect]**
+- **pads clearselect**
     - unselect all pads
-- **[modules getpads setselect]**
+- **modules getpads setselect**
     - select all pads of all modules
-- **[modules getpads clearselect]**
+- **modules getpads clearselect**
     - unselect all pads of all modules
-- **[modules U1 matchreference getpads setselect]**
+- **modules U1 matchreference getpads setselect**
     - select the pads of the module with reference 'U1'
    
 ### General Conventions
@@ -142,7 +135,7 @@ KiCommand follows a general set of conventions:
 - Arguments are usually Mixed Case.
 - Python commands within Command Stack are whatever is needed, but mostly will be Mixed Case or UPPER CASE.
 - To enter an argument that also happens to be a command, use the single quote mark (') such as in the following string: **'calllist help**
-- Access to Python functions and attributes are exactly as documented in the [Python pcbnew documentation](http://docs.kicad-pcb.org/doxygen-python/namespacepcbnew.html), which are often in either mixed case or all caps. Example **[modules GetCenter call]**
+- Access to Python functions and attributes are exactly as documented in the [Python pcbnew documentation](http://docs.kicad-pcb.org/doxygen-python/namespacepcbnew.html), which are often in either mixed case or all caps. Example: **modules GetCenter call**
 - Define a new command with the colon, and end with the semicolon.
     - **: newcommand ARG Arg command ARG command ;**
 - Core commands either place objects on the stack or operate on objects on the stack. The commands that place a list of objects on the stack are in the category *Elements* and are listed with the command **Elements helpcat**:
@@ -162,6 +155,31 @@ KiCommand follows a general set of conventions:
     - **pads selected**
     - **modules U1 matchreference getpads**
     - **tracks VIA filtertype**
+
+### Calling Python commands
+
+Calling Python within a *Command String* is possible and there are several commands
+designed to do so within the 'Programming' category, with commands in the 'Conversion'
+category being useful to convert arguments to the correct format and type.
+
+- **call** - used to call a Python object's function that requires no arguments (such as a call to GetShapeStr on a DRAWSEGMENT object)
+- **callargs** - used to call a Python object's function that requires arguments. Arguments
+are in the single argument as a list of lists, where each inner list contains the arguments
+for a single call. The inner list contains as many members as arguments necessary
+for the command. The commands **zip2**, **float**, **list** and **delist** might be useful here.
+- **attr** - retrieves an attribute from an object. This can be a value or a function, though
+if it were a function, it's probably more useful with the **call** or **callargs** commands.
+
+### Lists
+Many commands can use lists as arguments. Often, lists as
+arguments are used in parallel, and the results are in parallel
+as well. For example, if there is a list of DRAWSEGMENTs at
+the top of the stack, the command string **GetShapeStr call**
+will result in a parallel list of outputs from the corresponding
+DRAWSEGMENT. The command is repeated for each member of the list.
+
+To filter lists, try using the **filtertype**, **filter**, 
+and commands in the *Comparison* category.
 
 ### About Capitalization
 
