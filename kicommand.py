@@ -10,48 +10,20 @@ import wx
 from wxpointutil import wxPointUtil
 import kicommand_gui
 #
-#  
-#      +++---+---++---+---+++---+---++---+---+++
-#      +++---+---++---+---+++---+---++---+---+++
-#      +++---+---++---+---+++---+---++---+---+++
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      +++---+---++---+---+++---+---++---+---+++
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      +++---+---++---+---+++---+---++---+---+++
-#      +++---+---++---+---+++---+---++---+---+++
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      +++---+---++---+---+++---+---++---+---+++
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      +++---+---++---+---+++---+---++---+---+++
-#      +++---+---++---+---+++---+---++---+---+++
-#      +++---+---++---+---+++---+---++---+---+++
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      +++---+---++---+---+++---+---++---+---+++
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      +++---+---++---+---+++---+---++---+---+++
-#      +++---+---++---+---+++---+---++---+---+++
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      +++---+---++---+---+++---+---++---+---+++
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      |||   |   ||   |   |||   |   ||   |   |||
-#      +++---+---++---+---+++---+---++---+---+++
-#      +++---+---++---+---+++---+---++---+---+++
-#      +++---+---++---+---+++---+---++---+---+++
+
+# examples:
+
+# : lines drawings DRAWSEGMENT filtertype copy GetShapeStr call Line = filter ;
+# clear lines selected copy connected swap angle delist 0 swap -f rotate
+
+# : horizontal lines copy selected connected lines selected angle delist 0 swap -f rotate ;
+
+# : horizontal lines copy selected swap 1 pick connected swap angle delist 0 swap -f rotate ;
+
+# : makeangle lines copy selected swap 1 pick connected swap angle delist 2 pick swap -f rotate pop ;
+#drawings DRAWSEGMENT filtertype copy GetShapeStr call Line = filter copy selected
+
+
 #
 # Select all line segments and connect closest edges to make a closed polygon:
 # drawings DRAWSEGMENT filtertype copy GetShapeStr call Line = filter copy selected connect
@@ -337,8 +309,10 @@ def run(commandstring):
     #output( 'after command: ',str(_operand_stack))
     if len(_operand_stack):
         output( len(_operand_stack), 'operands left on the stack.' )
-        
-    pcbnew.UpdateUserInterface()
+    try:
+        pcbnew.UpdateUserInterface()
+    except:
+        pass
     return _operand_stack
 
 def retNone(function,args):
@@ -375,7 +349,28 @@ def output(*args):
     for arg in args:
         print arg,
     print
-    
+
+def copper_to_ds(*c):
+    tracklist,layer = c
+    try:
+        layerID = int(layer)
+    except:
+        layerID = pcbnew.GetBoard().GetLayerID(str(layer))
+        
+    segments = []
+    for t in tracklist:
+        s=t.GetStart()
+        e=t.GetEnd()
+        segments.append(draw_segment(
+            s[0],
+            s[1],
+            e[0],
+            e[1],
+            layer=layerID,
+            thickness=t.GetWidth()))
+    return segments
+        
+
 def draw_segmentlist(input,layer=pcbnew.Eco2_User,thickness=0.015*pcbnew.IU_PER_MM):
     """Draws the vector (wxPoint_vector of polygon vertices) on the given
        layer and with the given thickness.
@@ -386,7 +381,6 @@ def draw_segmentlist(input,layer=pcbnew.Eco2_User,thickness=0.015*pcbnew.IU_PER_
     # list of strings of comma separated points
     # list of wxPoint
     # list of lists of wxPoint
-
     if isinstance(input,basestring):
         input = input.split(',')
     # Now, input is an actual list
@@ -395,6 +389,7 @@ def draw_segmentlist(input,layer=pcbnew.Eco2_User,thickness=0.015*pcbnew.IU_PER_
         temp = []
         input = map(lambda y: float(y),map(lambda x: temp.extend(x),[i.split(',') for i in input]))
     # Now, input is a list of
+    # 1) individual floats, 2) wxPoints, or 3) wxPoint lists
     # 1) individual floats, 2) wxPoints, or 3) wxPoint lists
     if isinstance(input[0],float):
         a = iter(input)
@@ -1584,6 +1579,39 @@ def ROTATEPOINTS(points,center,angle):
     # output( 'c2:',center, points)
     return newps
 
+def REMOVE(items):
+    if not hasattr(items,'__iter__'):
+        items = [items]
+    b = pcbnew.GetBoard()
+    d=b.GetDrawings().Remove
+    t=b.GetTracks().Remove
+    m=b.GetModules().Remove
+    access = ((pcbnew.TRACK,t),(pcbnew.MODULE,m),(object,d))    
+    for item in items:
+        for inst,remove in access:
+            output(str(inst),str(remove))
+            if isinstance(item,inst):
+                remove(item)
+                continue
+
+    
+def TOCOPPER(*c):
+    objects,layer = c
+    board = pcbnew.GetBoard()
+    try:
+        layerID = int(layer)
+    except:
+        layerID = board.GetLayerID(str(layer))
+        
+    for object in objects:
+        track = pcbnew.TRACK(board)
+        track.SetStart(object.GetStart())
+        track.SetEnd(object.GetEnd())
+        track.SetWidth(object.GetWidth())
+        track.SetLayer(layerID)
+
+        board.Add(track)
+    
 def CORNERS(c):
     if (not hasattr(c,'__iter__')) and \
         ((hasattr(c,'GetSize') and hasattr(c,'GetCenter')) or \
@@ -1948,7 +1976,7 @@ _command_dictionary = {
         'OBJECTLIST. Returns the list of results in the same order as the '
         'original OBJECTLIST. The commands LIST and ZIP2 will be helpful '
         'here.'),
-
+ 
     
     'call': Command(2,lambda c: map(lambda x: getattr(x,c[1])(), c[0]),'Call',
         '[LIST FUNCTION] Execute python FUNCTION on each member of LIST. Return the list of results in the same order as the original LIST.'),
@@ -2122,6 +2150,9 @@ _command_dictionary = {
         "into vertices appropriate for drawsegments."
         ),
     
+    'tocopper': Command(2,lambda c: TOCOPPER(*c),'Layer',
+        "[DRAWSEGMENTLIST LAYER] put each DRAWSEGMENT on the copper LAYER."),
+    
     'layernums': Command(1,lambda c: [pcbnew.GetBoard().GetLayerID(x) for x in c[0].split(',')],'Layer',
         '[STRING] Get the layer numbers for each layer in comma separated STRING. '
         'STRING can also be one number, if desired.'),
@@ -2152,7 +2183,7 @@ _command_dictionary = {
         '[SEGMENTLIST] Move/stretch the selected segments into a regular '
         'polygon (equal length sides, equal angles).'),
     'cut': Command(0,lambda c: CUT(*c),'Draw',
-        'Cut all segments with the selected segment at the intersection.'),
+        'Cut all segments with the selected segment at the intersection. Then remove the cutting (selected) segment.'),
     'round': Command(2,lambda c: draw_arc_to_segments(*c),'Draw',
         '[RADIUS SEGMENTLIST] Round the corners of connected line segments '
         'within SEGMENTLIST by adding ARCs of specified RADIUS.'),
@@ -2160,6 +2191,10 @@ _command_dictionary = {
         '[SEGMENTLIST] Return the angle of each segment in SEGMENTLIST.'),
     'drawarc':Command(1,lambda c: draw_arc(50*pcbnew.IU_PER_MM,50*pcbnew.IU_PER_MM,radius,angle,layer=_user_stacks['drawparams'][3],thickness=_user_stacks['drawparams'][0]),'Draw',
         ""),
+    'remove':Command(1,lambda c: REMOVE(*c),'Layer',
+        '[OBJECTORLIST] remove items from board. Works with any items in Modules, Tracks, or Drawings.'),
+    'todrawsegments':Command(2,lambda c: copper_to_ds(*c),'Layer',
+        '[TRACKLIST LAYER] copy tracks in TRACKLIST to drawsegments on LAYER. Copies width of each track.'),
     'drawsegments':Command(1,lambda c: draw_segmentlist(c[0],layer=_user_stacks['drawparams'][3],thickness=_user_stacks['drawparams'][0]),'Draw',
         "[POINTSLIST] Points list is interpreted as pairs of X/Y values. Line segments are"
         "drawn between all successive pairs of points, creating a connected sequence of lines."
@@ -2286,7 +2321,10 @@ pshapesactual = filter(lambda x: x.startswith('PAD_SHAPE_'),dir(pcbnew))
 pshapes = ['PAD_SHAPE_CIRCLE','PAD_SHAPE_OVAL', 'PAD_SHAPE_RECT', 'PAD_SHAPE_ROUNDRECT', 'PAD_SHAPE_TRAPEZOID']
 
 if Counter(pshapesactual) != Counter(pshapes):
-    output( 'Warning! Expected Pad Shapes are different than KiCommand expects.')
+    try:
+        output( 'Warning! Expected Pad Shapes are different than KiCommand expects.')
+    except:
+        pass
 
 
 def pad_to_drawsegment(pad):
@@ -2379,3 +2417,4 @@ def pad_to_drawsegment(pad):
     # pass
     
 aplugin.register(aplugin())
+aplugin().Run()
