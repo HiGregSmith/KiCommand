@@ -1,6 +1,7 @@
 import collections
 from collections import defaultdict, Counter
 from itertools import compress,izip, cycle
+import itertools
 import pcbnew
 import time
 import os, sys
@@ -430,6 +431,44 @@ def draw_segmentlist(input,layer=pcbnew.Eco2_User,thickness=0.015*pcbnew.IU_PER_
 # r('0,0,100,100 MM DRAWSEGMENTS')
 def close_enough(a,b):
     return abs(a-b)<(5*32) 
+def GRID(dseglist,grid):
+    grid = int(grid)
+    for seg in dseglist:
+            for gp,sp in ((seg.GetStart,seg.SetStart),(seg.GetEnd,seg.SetEnd)):
+                p = gp()
+                newp=pcbnew.wxPoint(int(round(p[0]/grid)*grid),int(round(p[1]/grid)*grid))
+                sp(newp)
+        
+# Scale to 100 mm and make one of the segments parallel to angle 0
+# 100 mm 0 clear drawings selected copy connect copy regular copy copy length delist 100 mm swap /f scale copy delist list angle delist 0 swap -f rotate
+# 100 mm 0 drawings selected copy connect copy regular copy copy length delist stack 4 pick swap /f scale copy delist list angle delist 2 pick swap -f rotate stack
+
+
+
+# 
+# : regularsize drawings selected copy connect copy regular copy copy length delist stack 4 pick swap /f scale copy delist list angle delist 2 pick swap -f rotate pop pop ;
+# Usage: SIDELENGTH PARALLELANGLE regularsize
+
+def SCALE(dseglist,factor):
+    # find midpoint of all points
+    num = 2*len(dseglist)
+    pairs = map(lambda seg: get_ds_ends(seg),dseglist)
+    points = [item for sublist in pairs for item in sublist]
+    xs, ys = itertools.tee(points)
+    xsum, ysum = sum(x[0] for x in xs), sum(y[1] for y in ys)
+    center = pcbnew.wxPoint(xsum/num,ysum/num)
+    
+    output('Center: %s'%(center))
+    for seg in dseglist:
+        for gp,sp in ((seg.GetStart,seg.SetStart),(seg.GetEnd,seg.SetEnd)):
+            p = gp()
+            v=p-center
+            newp=wxPointUtil.scale(v,float(factor))+center
+            sp(newp)
+        
+def LENGTH(dseglist):
+    return map(lambda seg: wxPointUtil.distance(*get_ds_ends(seg)), dseglist)
+    
 def REGULAR(dseglist):
     """create a regular polygon from the set of connected and closed segments"""
     ordered = order_segments(dseglist)
@@ -441,9 +480,16 @@ def REGULAR(dseglist):
     # for seg in ordered:
         # output( "ordered s,e=",get_ds_ends(seg))
 
-    sidelength = 0
-    for seg in dseglist:
-        sidelength += wxPointUtil.distance(*get_ds_ends(seg))
+    numsides = len(dseglist)
+    
+    # this makes the sides equal to largest of existing sides:
+    sidelength = max(map(lambda seg: wxPointUtil.distance(*get_ds_ends(seg)), dseglist))
+        
+    # this makes the sides equal to average of existing sides:
+    # sidelength = 0
+    # for seg in dseglist:
+        # sidelength += wxPointUtil.distance(*get_ds_ends(seg))
+    #sidelength = sidelength / numsides
 
     # positive polarity is this end is common to the next seg.
     polarity = []
@@ -454,9 +500,6 @@ def REGULAR(dseglist):
                         (close_enough(e[0],en[0]) and close_enough(e[1],en[1])))
         e = en
     polarity.append(polarity[0])
-    numsides = len(dseglist)
-    #output( 'sides = ',numsides)
-    sidelength = sidelength / numsides
     angle = 2*math.pi / numsides
     
     # get angle of first segment, use this as the starting angle
@@ -2182,6 +2225,11 @@ _command_dictionary = {
     'regular': Command(1,lambda c:REGULAR(*c),'Draw',
         '[SEGMENTLIST] Move/stretch the selected segments into a regular '
         'polygon (equal length sides, equal angles).'),
+    'grid': Command(2,lambda c:GRID(*c),'Draw',
+        '[SEGMENTLIST GRID] Move points of SEGMENTLIST to be a multiple of GRID.'),
+    'scale': Command(2,lambda c:SCALE(*c),'Draw',
+        '[SEGMENTLIST FACTOR] Scale each item in SEGMENTLIST by FACTOR, using '
+        'the midpoint of all segments as the center.'),
     'cut': Command(0,lambda c: CUT(*c),'Draw',
         'Cut all segments with the selected segment at the intersection. Then remove the cutting (selected) segment.'),
     'round': Command(2,lambda c: draw_arc_to_segments(*c),'Draw',
