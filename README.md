@@ -23,17 +23,32 @@ Here are a few short examples:
 ## Getting Started
 ### Installation
 
-KiCommand is an ActionPlugin and is installed similarly to other Action Plugins:
 
-1) Place the kicommand.py and kicommand_gui.py files in 
-C:\Program Files\KiCad\share\kicad\scripting\plugins
+
+
+- Place the the files kicommand.py, kicommand_gui.py, and
+kicommand_persist.commands in 
+**C:\Program Files\KiCad\share\kicad\scripting\plugins**
 Or the equivalent in MacOS or Linux
 (*there may be a user-level directory for such files, but I am not aware of it at the moment.*)
-2) Within KiCad pcbnew, select the Tools > External Plugins > Refresh Plugins
-3) The next time you start pcbnew, the *KiCommand* menu item will already be in
-the *External Plugins* menu so there should be no need to *Refresh Plugins*.
+
+#### For KiCad nightly
+KiCommand is an ActionPlugin and is installed similarly to other Action Plugins:
+
+1) Within KiCad pcbnew, select the Tools > External Plugins > Refresh Plugins
+2) The next time you start pcbnew, the *KiCommand* menu item will already be in the *External Plugins* menu so there should be no need to *Refresh Plugins*.
 
 KiCommand dialog box is shown when the Tools > External Plugins > KiCommand menu item is selected.
+
+#### For KiCad 4.0.7 stable:
+
+Enable Tools > Scripting Console then enter
+
+    import kicommand
+
+This will show the KiCommand dialog.
+(Note that not all commands have been tested in 4.0.7).
+
 
 ### Self Documented Help
 When KiCommand starts up, it displays help information to get you started.
@@ -126,7 +141,56 @@ to the stack. If you need to execute several commands on the same argument, the
     - unselect all pads of all modules
 - **modules U1 matchreference getpads setselect**
     - select the pads of the module with reference 'U1'
-   
+
+### Defining commands
+
+KiCommand maintains several different dictionaries from which it obtains command
+definitions. These dictionaries are named **user**, **persist**, and **command**.
+
+The **command** dictionary contains python functions within the KiCommand source
+code and cannot be detailed further from the command line. You can view the source
+code to see how these commands are constructed.
+
+The **persist** dictionary contains python functions defined by default and
+supplied with KiCommand. These commands are constructed from other KiCommand
+commands and can be viewed with the **see** and **seeall** commands. These
+commands can be created with the **:persist** command, but it is not
+recommended that users use this function.
+
+The **user** dictionary contains commands defined by the user and constructed
+as a *command string* from other commands. These can also be viewed with the
+**see** and **seeall** commands. These
+commands can be created with the **:** command and they can be **save**ed and
+**load**ed from the user's **~/kicad/commands** directory.
+
+It should be noted that **persist** commands can redefine **command** commands
+and **user** commands can redefine both **persist** and **command** commands.
+
+The following commands are helpful for investigating this area of KiCommand:
+
+- **see** - shows a specific command string from the **user** or **persist** dictionaries.
+- **seeall** - shows all commands in the **user** and **persist** dictionaries.
+- **helpcat** - shows all categories of commands **after** they are superceded. If
+any commands are redefined by **user** or **persist** commands, then only the
+redefined command is shown.
+- **explain** - shows the help text for any command that defines it. It is hightly
+recommended that any defined commands include a category and help text.
+- **: commandname ;** - removes the definition of **commandname** from the **user** dictionary.
+- **: ;** - removes all definitions from the **user** dictionary.
+
+The recommended way of defining a new command is:
+
+**: commandname "Category [Argument1 Argument2] Help Text To Explain the Command, including the  arguments." arguments and commands ;**
+
+
+An example is like this:
+**: setselect "Elements [OBJECTLIST] Sets the objects as Selected." SetSelected call ;**
+
+When defined, the **seteselect** command will show the help text in the **explain**
+command and will be listed in the *Elements* category with the **helpcat** command.
+
+More examples can be seen in the *kicommand_persist.commands* file or by using the **seeall** command.
+
 ### General Conventions
 
 KiCommand follows a general set of conventions:
@@ -135,6 +199,8 @@ KiCommand follows a general set of conventions:
 - Arguments are usually Mixed Case.
 - Python commands within Command Stack are whatever is needed, but mostly will be Mixed Case or UPPER CASE.
 - To enter an argument that also happens to be a command, use the single quote mark (') such as in the following string: **'calllist help**
+- To enter an argument that requires any spaces (such as a filename or command help text),
+use double quotes around the argument (i.e. **"argument with spaces"**).
 - Access to Python functions and attributes are exactly as documented in the [Python pcbnew documentation](http://docs.kicad-pcb.org/doxygen-python/namespacepcbnew.html), which are often in either mixed case or all caps. Example: **modules GetCenter call**
 - Define a new command with the colon, and end with the semicolon.
     - **: newcommand ARG Arg command ARG command ;**
@@ -159,7 +225,7 @@ KiCommand follows a general set of conventions:
 ### Calling Python commands
 
 Calling Python within a *Command String* is possible and there are several commands
-designed to do so within the 'Programming' category, with commands in the 'Conversion'
+designed to do so within the *Programming* category, with commands in the 'Conversion'
 category being useful to convert arguments to the correct format and type.
 
 - **call** - used to call a Python object's function that requires no arguments (such as a call to GetShapeStr on a DRAWSEGMENT object)

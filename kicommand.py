@@ -153,6 +153,9 @@ import kicommand_gui
 
         # if hasattr(pcbnew,'ActionPlugin')
 Command = collections.namedtuple('Command','numoperands execute category helptext')
+UserCommand = collections.namedtuple('UserCommand','execute category helptext')
+
+#uc.execute(uc.string)
 
 class gui(kicommand_gui.kicommand_panel):
     """Inherits from the form wxFormBuilder. Supplies
@@ -210,6 +213,10 @@ class aplugin(pcbnew.ActionPlugin):
         manager = wx.aui.AuiManager.GetManager(parent)
         manager.AddPane( self.__class__.g, pane )
         manager.Update()
+        loadname = os.path.join(os.path.dirname(__file__),'kicommand_persist.commands')
+        #print ('Loading from %s'%os.path.normpath(loadname))
+        LOAD('kicommand_persist.commands',path=os.path.dirname(__file__))
+
         run('help')
 
 def run(commandstring):
@@ -229,41 +236,53 @@ def run(commandstring):
     #output( str(_operand_stack))
     
     commandlines = commandstring.splitlines()
-    
+    commands = []
     for commandstring in commandlines:
-        commands = []
+        #print 'processing {%s}'%commandstring
+        #commands = []
         qend = 0
         while True:
             qindex = commandstring.find('"',qend)
-            if qindex != -1:
-                # wx.MessageDialog(None,'PRE '+commandstring[qend:qindex-1]).ShowModal()
-                commands.extend(commandstring[qend:qindex].split())
-                qend = commandstring.find('"',qindex+1)
-                if qend == -1:
-                    raise SyntaxError('A line must contain an even number of double quotes.')
-                commands.append(commandstring[qindex+1:qend])
-                # wx.MessageDialog(None,'Q {'+commandstring[qindex+1:qend]+'}').ShowModal()
-                qend += 1
-            else:
-                break
+            if qindex == -1:
+                break;
+            # wx.MessageDialog(None,'PRE '+commandstring[qend:qindex-1]).ShowModal()
+            commands.extend(commandstring[qend:qindex].split())
+            qend = commandstring.find('"',qindex+1)
+            if qend == -1:
+                raise SyntaxError('A line must contain an even number of double quotes.')
+            commands.append(commandstring[qindex+1:qend])
+            # wx.MessageDialog(None,'Q {'+commandstring[qindex+1:qend]+'}').ShowModal()
+            qend += 1
             
         # wx.MessageDialog(None,'END {'+commandstring[qend:]+'}').ShowModal()
         commands.extend(commandstring[qend:].split())
     # wx.MessageDialog(None,'{'+'}{'.join(commands)+'}').ShowModal()
+    #print '{','}{'.join(commands),'}'
     for command in commands:
         
         if command == ';':
             _compile_mode = False
             comm = _command_definition[:1]
-            cdef = _command_definition[1:]
-            output( "COMMAND %s DEFINITION %s"%(comm,cdef))
             if not comm: # delete all commands in the user dictionary: ': ;'
                 _user_dictionary = {}
                 continue
             comm = comm[0]
-            if cdef: # delete a command in the user dictionary: ': COMMAND ;'
-                _dictionary[_newcommanddictionary][comm] = ' '.join(cdef)
-            else:
+            cdef = _command_definition[1:]
+            if cdef:
+                # if the first term contains a space, then
+                # the category and helptext are taken from that parameter.
+                cat = ''
+                help = ''
+                firstspace = cdef[0].find(' ')
+                if firstspace != -1:
+                    cathelp = cdef.pop(0)
+                    cat = cathelp[:firstspace]
+                    help = cathelp[firstspace+1:]
+                    _dictionary[_newcommanddictionary][comm] = UserCommand(cdef,cat,help)
+                #output( "COMMAND %s DEFINITION %s\nCategory: {%s} Help: {%s}"%(comm,cdef,cat,help))
+                else:
+                    _dictionary[_newcommanddictionary][comm] = ' '.join(cdef)
+            else: # delete a command in the user dictionary: ': COMMAND ;'
                 del(_user_dictionary[_command_definition[0]])
             _command_definition = []
             continue
@@ -277,43 +296,44 @@ def run(commandstring):
             continue
             
         found = False
-        for dictname in ['user','persist']:
-            if command in _dictionary[dictname]:
-                run(_dictionary[dictname][command])
-                found = True
+        #output('Dictionaries')
+        for dictname in ('user','persist','command'):
+            #output(dictname,' : ',str(_dictionary[dictname]))
+            if command not in _dictionary[dictname]:
                 continue
-        if found:
-            continue
-        if command not in _command_dictionary:
+            commandToExecute = _dictionary[dictname][command]
+            if isinstance(commandToExecute,Command):
+                #output('%s is Command'%command)
+                numop = commandToExecute.numoperands
+                if len(_operand_stack) < numop:
+                    raise TypeError('%s expects %d arguments on the stack.'%(command,numop))
+                if numop:
+                    result = commandToExecute.execute(_operand_stack[-numop:])
+                    _operand_stack = _operand_stack[:-numop]
+                else:
+                    result = commandToExecute.execute([])
+                    
+                if result:
+                    _operand_stack.append(result)
+            elif isinstance(commandToExecute,UserCommand):
+                #output('%s is UserCommand'%command)
+                run(commandToExecute.execute)
+            elif isinstance(commandToExecute,basestring):
+                #output('%s is commandstring'%command)
+                run(commandToExecute)
+            found = True
+            break
+        if not found:
             _operand_stack.append(command)
-            continue
-
-        numop = _command_dictionary[command].numoperands
-        #output('checking number of args')
-        if len(_operand_stack) < numop:
-            raise TypeError('%s expects %d arguments on the stack.'%(command,numop))
-        #output('num op = %d %s'%(numop,str(_operand_stack[-numop:])))
-        if numop == 0:
-            result = _command_dictionary[command].execute([])
-        else:
-            result = _command_dictionary[command].execute(_operand_stack[-numop:])
-        #output( '1: ',str(_operand_stack))
-        if numop != 0:
-            _operand_stack = _operand_stack[:-numop]
-        #output( '2: ',str(_operand_stack))
         
-        if result is None:
-            #output( command,'result is None')
-            continue
-        #output( command,_command_dictionary[command].numoperands,'result is not None',str(_operand_stack), str(result))
-        _operand_stack.append(result)
-    #output( 'after command: ',str(_operand_stack))
+        
     if len(_operand_stack):
         output( len(_operand_stack), 'operands left on the stack.' )
     try:
         pcbnew.UpdateUserInterface()
     except:
         pass
+    #print 'User dictionary',_dictionary['user']
     return _operand_stack
 
 def retNone(function,args):
@@ -445,9 +465,12 @@ def GRID(dseglist,grid):
 
 
 
-# 
-# : regularsize drawings selected copy connect copy regular copy copy length delist stack 4 pick swap /f scale copy delist list angle delist 2 pick swap -f rotate pop pop ;
 # Usage: SIDELENGTH PARALLELANGLE regularsize
+# regularsize takes the selected segments, joins them into a regular polygon, then
+# sizes the edges to the specified length, and places one of the edges parallel
+# to the specified angle
+
+# : regularsize drawings selected copy connect copy regular copy copy length delist stack 4 pick swap /f scale copy delist list angle delist 2 pick swap -f rotate pop pop ;
 
 def SCALE(dseglist,factor):
     # find midpoint of all points
@@ -1719,9 +1742,11 @@ def CORNERS_old(c):
 
 savepath = os.path.join(os.path.expanduser('~'),'kicad','kicommand')
 
-def LOAD(name):
-    new_path = os.path.join(savepath, name)
+def LOAD(name,path=savepath):
+    new_path = os.path.join(path, name)
+    #print name, path
     with open(new_path,'r') as f: run(f.read())
+    
 
 def SAVE(name):
     dictname = 'user'
@@ -1736,6 +1761,7 @@ def SAVE(name):
             f.write( ": %s %s ;\n"%(command,_dictionary[dictname][command]))
 
 def EXPLAIN(commandstring,category=None):
+    output('Explaining',commandstring)
     commands = commandstring.split(',')
     commands.reverse()
     printed = set()
@@ -1749,23 +1775,29 @@ def EXPLAIN(commandstring,category=None):
         if not command:
             continue
         if command in printed:
-            output(('%s'%(command)))
+            output(('%s (see explanation above)'%(command)))
             continue
         else:
             found = None
+            printed.add(command)
             for dictname in ['user','persist']:
                 #output( '\n',dictname,'Dictionary')
                 if command in _dictionary[dictname]:
-                    found = _dictionary[dictname][command].split()
-                    output( ': %s %s ;'%(command,' '.join(found)))
-                    found.reverse()
-                    commands.extend(found)
+                    found = _dictionary[dictname][command]
+                    if isinstance(found,basestring):
+                        found = found.split()
+                        output( ': %s %s ;'%(command,' '.join(found)))
+                        found.reverse()
+                        commands.extend(found)
+                    else:
+                        print_command_detail(command)
                     break;
             if not found:
                 if not print_command_detail(command):
                     output( '%s - A literal value (argument)'%command)
                 # HELP(command,exact=True)
-                # printed.add(command)
+            else:
+                printed.add(command)
 
 def HELPALL():
     sorted = list(_command_dictionary.keys())
@@ -1774,10 +1806,15 @@ def HELPALL():
         print_command_detail(command)
         
 def print_command_detail(command):
-    k,v = command,_command_dictionary.get(command,None)
+    for dictname in ('user','persist','command'):
+        v = _dictionary[dictname].get(command,None)
+        if v:
+            break
     if not v:
         return False
-    output(('%s (Category: %s)'%(k,v.category)))
+    # if isinstance(command,basestring):
+        # return False
+    output(('%s (Category: %s)'%(command,v.category)))
     output(('\t%s'%'\n'.join(['\n\t'.join(wrap(block, width=60)) for block in v.helptext.splitlines()])))
     return True
 
@@ -1802,8 +1839,20 @@ def HELPMAIN():
         print_command_detail(command)
 
 def HELPCAT(category):
-    if category == 'All':
+
+    uniondict = {}
+    commands = []
+    
+    for dictname in ('user','persist','command'):        
+        uniondict.update(_dictionary[dictname])
+
+    if category == 'Core':
         commands = _command_dictionary.iteritems()
+    elif category == 'All':
+        commands = uniondict.iteritems()
+        
+
+    if commands:
         cbyc = defaultdict(list)
         for command in commands:
             cbyc[command[1].category].append(command[0])
@@ -1814,8 +1863,8 @@ def HELPCAT(category):
         for category in sorted(cbyc.keys()):
             output( '{:<{width}} - {}'.format(category,' '.join(cbyc[category]), width=catlen))
         return
-
-    commands = filter(lambda c: c[1].category == category, _command_dictionary.iteritems())
+        
+    commands = filter(lambda c: hasattr(c[1],'category') and c[1].category == category, uniondict.iteritems())
     commands = [command[0] for command in commands]
     commands.sort()
     for command in commands:
@@ -1885,7 +1934,7 @@ _dictionary = {'user':{}, 'persist':{}, 'command':{}}
 # collections.OrderedDict
 _command_dictionary = _dictionary ['command']
 _operand_stack = []
-_command_dictionary = {
+_command_dictionary.update({
     # PCB Elements
     # ': board pcbnew GetBoard call ;'
     # ': modules board GetModules call ;'
@@ -2276,7 +2325,7 @@ _command_dictionary = {
         
     # 'vias': filter(lambda x:isinstance(x,pcbnew.VIA),_command_dictionary['tracks']),
     # 'vias_class': filter(lambda x:pcbnew.VIA_Classof(x),_command_dictionary['tracks']),
-}
+})
 
 _newcommanddictionary = None
 _compile_mode = False
@@ -2301,58 +2350,13 @@ def print_userdict(command=None):
         else:
             commands = _dictionary[dictname].iteritems()
             #output ('%d items in %s'%(99,dictname))
-        for command,definition in sorted(commands,key=lambda x:x[0]):
-            output( ":",command,_dictionary[dictname][command],';')
+        for found,definition in sorted(commands,key=lambda x:x[0]):
+            text = _dictionary[dictname][found]
+            if hasattr(text,'helptext'):
+                text = '"'+text.category+' '+text.helptext+'" '+' '.join(text.execute)
+            output( ":",found,text,';')
+            
 # r('CLEAR MODULETEXTOBJ VALUETEXTOBJ APPEND REFERENCETEXTOBJ APPEND COPY GetTextBox CALL CORNERS SWAP COPY GetCenter CALL SWAP GetTextAngleDegrees CALL ROTATEPOINTS DRAWSEGMENTS')
-# _persistdefault = """
-# :  ; 
-# """
-# for line in _persistdefault.splitlines():
-    # run(line)
-_dictionary['persist']['wxpoint'] = 'pcbnew list swap list wxPoint callargs'
-_dictionary['persist']['toptextobj'] = 'drawings EDA_TEXT filtertype'
-_dictionary['persist']['valuetextobj']= 'modules Value call'
-_dictionary['persist']['referencetextobj']= 'modules Reference call'
-_dictionary['persist']['moduletextobj']= 'modules GraphicalItems calllist EDA_TEXT filtertype'
-_dictionary['persist']['textfromobj']= 'GetShownText call' 
-
-#_dictionary['persist']['valuetext'] = 'modules GetValue call'
-#_dictionary['persist']['referencetext'] = 'modules GetReference call'
-
-_dictionary['persist']['not'] = "' ="
-_dictionary['persist']['copy'] = "0 pick"
-_dictionary['persist']['setselect'] = 'SetSelected call'
-_dictionary['persist']['clearselect'] = 'ClearSelected call'
-_dictionary['persist']['orthogonal'] = '90 makeangle'
-_dictionary['persist']['clearallselected'] = """
-        modules copy GetReference call clearselect
-        copy GetValue call clearselect
-        copy GraphicalItems calllist clearselect
-        clearselect
-        pads clearselect
-        tracks clearselect
-        drawings clearselect 
-        """
-_dictionary['persist']['outlinepads'] = """
-        pads copy corners swap copy GetCenter call swap 
-        GetOrientationDegrees call rotatepoints drawsegments
-        """
-_dictionary['persist']['outlinetext'] = """
-        valuetextobj
-        referencetextobj append 
-        moduletextobj append 
-        copy GetTextBox call corners swap copy GetCenter call swap 
-        copy GetTextAngleDegrees call swap GetParent call Cast call GetOrientationDegrees call
-        +l rotatepoints drawsegments
-        """ 
-        
-_dictionary['persist']['outlinetoptext'] = """
-        toptextobj
-        copy GetTextBox call corners swap copy GetCenter call swap
-        GetTextAngleDegrees call rotatepoints drawsegments ;
-        """
-        #         toptextobj append 
-
 #    'not': Command(0,lambda c: run('0 FLOAT ='),'Comparison'),
 
 #output( 'ops',str(_operand_stack))
@@ -2463,6 +2467,7 @@ def pad_to_drawsegment(pad):
     # menu().register()
 # except:
     # pass
+
     
 aplugin.register(aplugin())
 aplugin().Run()
