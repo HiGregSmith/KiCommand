@@ -3,6 +3,7 @@
 :persist valuetextobj "Elements Get all module's Value text objects." modules Value call ;
 :persist referencetextobj "Elements Get all module's Reference text objects." modules Reference call ;
 :persist moduletextobj "Elements Get all module's text objects that are not Value and not Reference." modules GraphicalItems calllist EDA_TEXT filtertype ;
+:persist drawparams "Draw [THICKNESS,WIDTH,HEIGHT LAYER] Set drawing parameters for future draw commands.\nExample: 1,5,5 mm F.Fab drawparams" 'l param t,w,h param ;
 :persist textfromobj "Elements [TEXTOBJECT] Get the text string from a text object." GetShownText call ;
 :persist valuetext "Elements Get all module's Value text as a string." modules GetValue call ;
 :persist referencetext "Elements Get all module's Reference text as a string." modules GetReference call ;
@@ -38,5 +39,11 @@
         toptextobj
         copy GetTextBox call corners swap copy GetCenter call swap
         GetTextAngleDegrees call rotatepoints drawsegments ;
+        ;
+:persist texttosegments "Draw [TEXTOBJLIST LAYER] Copies text objects in TEXTOBJLIST to LAYER."
+        swap copy GetThickness call list swap 
+        topoints pairwise 2 pick todrawsegments 
+        copy 2 pick SetWidth callargs pop
+        swap pop swap pop
         ;
         

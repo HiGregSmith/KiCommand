@@ -10,6 +10,12 @@ from textwrap import wrap
 import wx
 from wxpointutil import wxPointUtil
 import kicommand_gui
+
+_dictionary = {'user':{}, 'persist':{}, 'command':{}}
+# collections.OrderedDict
+_command_dictionary = _dictionary ['command']
+_operand_stack = []
+
 #
 
 # examples:
@@ -129,7 +135,7 @@ import kicommand_gui
         # 'clear modules GraphicalItems calllist drawsegment filtertype 
         #      copytop GetShapeStr call Line = filter GetShapeStr call'
 
-# Clearly there are two types of statements that test values.
+# There are two types of statements that test values.
 # 1) Results in filtering the current list into a smaller list, and
 # 2) Results in a list of values (possibly True/False) of the same length and
 #    in the same order as the tested list.
@@ -152,10 +158,46 @@ import kicommand_gui
         #http://interactivepython.org/runestone/static/pythonds/BasicDS/InfixPrefixandPostfixExpressions.html
 
         # if hasattr(pcbnew,'ActionPlugin')
+# All commands are in _dictionary under one of three keys:
+#    user, persist, and command.
+# user and persist commands are command strings based on other
+#    defined commands, and organized with the 
+#    UserCommand() namedtuple.
+# command commands are defined as python statements or functions
+#    organized with the Command() namedtuple.
+# command statements are defined with the lambda command within
+#    a Command initialization.
+# command functions are defined within the class commands
+#    and the Command() namedtuples are constructed from
+#    function attributes. (Not all command functions have been
+#    ported to the class commands, some are still at the module
+#    top level.)
+
 Command = collections.namedtuple('Command','numoperands execute category helptext')
 UserCommand = collections.namedtuple('UserCommand','execute category helptext')
+#DrawParams = collections.namedtuple('DrawParams','thickness width height layer cpolyline zonepriority')
+DrawParams = collections.namedtuple('DrawParams','t w h l zt zp')
+# param Usage:
+# 0.3,1,1 mm F.Cu,NO_HATCH,0 split append t,w,h,l,zt,zp param
+# 0.3,1,1 mm t,w,h param
+# F.Cu,NO_HATCH,0 l,zt,zp param
+
+# : drawparams list append t,w,h,l param ;
+# : drawparams 'l param t,w,h param ;
 
 #uc.execute(uc.string)
+def SHOWPARAM(values,keys):
+    return _user_stacks['drawparams']
+    
+def PARAM(values,keys):
+    if isinstance(values,basestring):
+        values = values.split(',')
+    keys = keys.split(',')
+    
+    if not hasattr(values,'__iter__'):
+        values = [values]
+    for k,v in zip(keys,values):
+        _user_stacks['drawparams'][k] = v
 
 class gui(kicommand_gui.kicommand_panel):
     """Inherits from the form wxFormBuilder. Supplies
@@ -235,6 +277,7 @@ def run(commandstring):
     #output( _command_dictionary.keys())
     #output( str(_operand_stack))
     
+    #print type(commandstring)
     commandlines = commandstring.splitlines()
     commands = []
     for commandstring in commandlines:
@@ -311,13 +354,13 @@ def run(commandstring):
                     result = commandToExecute.execute(_operand_stack[-numop:])
                     _operand_stack = _operand_stack[:-numop]
                 else:
-                    result = commandToExecute.execute([])
+                    result = commandToExecute.execute([]) # TODO should this be [] ?
                     
                 if result:
                     _operand_stack.append(result)
             elif isinstance(commandToExecute,UserCommand):
                 #output('%s is UserCommand'%command)
-                run(commandToExecute.execute)
+                run(' '.join(commandToExecute.execute))
             elif isinstance(commandToExecute,basestring):
                 #output('%s is commandstring'%command)
                 run(commandToExecute)
@@ -371,24 +414,33 @@ def output(*args):
         print arg,
     print
 
-def copper_to_ds(*c):
+def todrawsegment(*c):
     tracklist,layer = c
+    #print 'tracklist: ',tracklist
     try:
         layerID = int(layer)
     except:
         layerID = pcbnew.GetBoard().GetLayerID(str(layer))
         
     segments = []
-    for t in tracklist:
-        s=t.GetStart()
-        e=t.GetEnd()
-        segments.append(draw_segment(
-            s[0],
-            s[1],
-            e[0],
-            e[1],
-            layer=layerID,
-            thickness=t.GetWidth()))
+    for tlist in tracklist:
+        for t in tlist:
+            # s=t.GetStart()
+            # e=t.GetEnd()
+            s,e = get_ds_ends(t)
+            
+            try:
+                width = t.GetWidth()
+            except:
+                width = _user_stacks['drawparams']['t']
+                
+            segments.append(draw_segment(
+                s[0],
+                s[1],
+                e[0],
+                e[1],
+                layer=layerID,
+                thickness=width))
     return segments
         
 
@@ -568,7 +620,15 @@ def REGULAR(dseglist):
         # ordered[i+1].SetStart(endpoint) if polarity[i+1] else ordered[i+1].SetEnd(endpoint)
 #    ordered[-1].SetEnd(firstanchor) if polarity[-1] else ordered[-1].SetStart(firstanchor)
 def get_ds_ends(dseg):
-    shape = dseg.GetShape()
+    try:
+        shape = dseg.GetShape()
+    except:
+        try:
+            return dseg[0],dseg[1]
+        except:
+            #print type(dseg)
+            output ('error get get_ds_ends')
+            return
     if shape == pcbnew.S_SEGMENT:
         return dseg.GetStart(), dseg.GetEnd()
     elif shape == pcbnew.S_ARC:
@@ -1218,7 +1278,7 @@ def draw_arc(x1,y1,x2,y2,angle,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_P
     # Arc
     # output( angle,pcbnew.wxPoint(x1,y1),pcbnew.wxPoint(x2,y2), "thickness=",thickness)
     ds.SetArcStart(pcbnew.wxPoint(x1,y1))
-    ds.SetAngle(angle*10)
+    ds.SetAngle(float(angle)*10)
     ds.SetCenter(pcbnew.wxPoint(x2,y2))
     
     board.Add(ds)
@@ -1355,74 +1415,94 @@ def point_round128(w):
     #return w
     return w.__class__(int(w[0])&mask,int(w[1])&mask)
 
-def REJOIN():
-    # Moves the set of coniguous lines or tracks to match the single line already moved.
-    run('drawings copytop selected')
-    # lines = _operand_stack[-1]
-    # if len(lines) <=2:
-        # return
-    # for line in lines:
-        # output( "Selected:", line.GetStart(), line.GetEnd())
-    # if isinstance(lines[0],pcbnew.TRACK):
-        # run('tracks')
-    # elif isinstance(lines[0],pcbnew.DRAWSEGMENT):
-        # run('drawings drawsegment filtertype')
-    # else:
-        # return
+    # TODO: maybe add layer, CPolyLine, and priority to drawparams
+def newzone(points, netname, layer, CPolyLine=pcbnew.CPolyLine.NO_HATCH, priority=0):
+    """NOT IMPLEMENTED"""
+    # CPolyLine values: NO_HATCH, DIAGONAL_FULL, DIAGONAL_EDGE
+    
+    priority = int(priority)
+
+    if isinstance(CPolyLine,basestring):
+        CPolyLine = getattr(pcbnew.CPolyLine,CPolyLine)
         
-    # run('swap connected')
+    try:
+        layer = int(layer)
+    except:
+        layer = board.GetLayerID(layer)
+
+
+    nets = board.GetNetsByName()
     
-    #run('copy copy GetStart call swap GetEnd call append')
-    
-    # Stack is now: CONNECTED StartAndEndPoints
-    # recast the end points as tuples
-    lines_by_vertex = defaultdict(set) #{}
-    for line in _operand_stack[-1]:
-        # output( 'Connected: ',line)
-        for p in (line.GetStart(),line.GetEnd()):
-            lines_by_vertex[(p.x,p.y)].add(line)
-            #lines_by_vertex.setdefault((p.x,p.y),set()).add(line)
-            
-    # for vertex,lines in lines_by_vertex.iteritems():
-        # output( vertex,': ',lines)
+    # for netname,layername in (("+5V", "B.Cu"), ("GND", "F.Cu")):
+    netinfo = nets.find(netname).value()[1]
+    #layer = layertable[layername]
+    newarea = board.InsertArea(netinfo.GetNet(), priority, layer, points[0][0], points[0][1], CPolyLine)
+    newoutline = newarea.Outline()
+
+    # if you get a crash here, it's because you're on an older version of pcbnew.
+    # the data structs for polygons has changed a little. The old struct has a
+    # method called AppendCorner. Now it's just Append. Also, the call to CloseLastContour,
+    # commented below used to be needed to avoid a corrupt output file.
+    for p in range(1,len(points)):
+        newoutline.Append(points[p][0],points[p][1]);
         
-    line_by_lonelyvertex = filter(lambda x: len(x[1])==1, lines_by_vertex.iteritems())
-    
-    # if both vertexes have only one line in lines_by_vertex, then it's the lonely line
-    lonely_line = []
-    connected_lines = []
-    for line in _operand_stack[-1]:
-        if len(lines_by_vertex[(line.GetStart().x,line.GetStart().y)]) == 1 \
-           and len(lines_by_vertex[(line.GetEnd().x,line.GetEnd().y)]) == 1:
-            lonely_line.append(line)
-        else:
-            connected_lines.append(line)
-    _operand_stack.pop()
-    # output( 'lonely',len(lonely_line),'; connected',len(connected_lines))
-    if len(lonely_line) != 1:
-        # output( 'no loney_line')
-        return
+    # newoutline.Append(boardbbox.xl, boardbbox.yh);
+    # newoutline.Append(boardbbox.xh, boardbbox.yh);
+    # newoutline.Append(boardbbox.xh, boardbbox.yl);
+    # this next line shouldn't really be necessary but without it, saving to
+    # file will yield a file that won't load.
+    # newoutline.CloseLastContour()
+
+    # don't know why this is necessary. When calling InsertArea above, DIAGONAL_EDGE was passed
+    # If you save/restore, the zone will come back hatched.
+    # before then, the zone boundary will just be a line.
+    # Omit this if you are using pcbnew.CPolyLine.NO_HATCH
+    #pcbnew.CPolyLine. (DIAGONAL_EDGE, DIAGONAL_FULL, NO_HATCH)
+    if CPolyLine != pcbnew.CPolyLine.NO_HATCH:
+        newarea.Hatch()
         
-    lonely_line = lonely_line[0]
-    lonely_line_vertices = [(lonely_line.GetStart().x,lonely_line.GetStart().y),
-                            (lonely_line.GetEnd().x,lonely_line.GetEnd().y)]
-    lonely_vertices = [tup[0] for tup in line_by_lonelyvertex]
-    lonely_vertices.remove(lonely_line_vertices[0])
-    lonely_vertices.remove(lonely_line_vertices[1])
-    output( type(list(lines_by_vertex[lonely_vertices[0]])[0]))
-    vector = lonely_line.GetStart() - list(lines_by_vertex[lonely_vertices[0]])[0].GetEnd()
-    output( "Moving by",vector)
-    for line in connected_lines:
-        output( '\t',line.GetStart(),line.GetEnd())
-        line.Move(vector)
+def SETLENGTH(initlist, length):
+    """NOT IMPLEMENTED"""
+    # Get GraphicalItems and Drawings.
+    allitems = list(pcbnew.GetBoard().GetDrawings())
+    for m in pcbnew.GetBoard().GetModules():
+        allitems.extend(m.GraphicalItems())
+    wholelist = filter(lambda x: isinstance(x,pcbnew.DRAWSEGMENT),allitems)
+    
+    # Given the segment list, determine the connected segments.
+    # Get the start and end points of each item in the wholelist
+    se = map(lambda x: get_ds_ends(x),wholelist)
+    d = defaultdict(list)
+    
+    # For each segment point, set the dictionary to indicate which gridboxes the item is in.
+    for i,item in enumerate(wholelist):
+        gridboxes(se[i][0],setdict=d,setelement=item)
+        gridboxes(se[i][1],setdict=d,setelement=item)
+    i = 0
+    retValue = list(initlist)
+    retValueSet = set()
+    
+    # now check each item in the initlist, and see if any points in the wholelist
+    # are in the same gridbox.
+    while i < len(retValue):
+        if i > 1000:
+            break
+        # get the segment end points
+        se = get_ds_ends(retValue[i])
         
-    # match lonely_line vertices to each of the other vertices by orientation
-    
-    
-    # find the vertices with only one line coincident.
-    # One of these is the lonely line, the other two are the polygon opening.
-    # Match topmost or left most coordinates of the lonely line to the opening.
-    # Now we have the vector of the Move, so Move the remaining lines.
+        # 
+        try: d[key].remove(retValue[i]) 
+        except: pass
+        retValue.extend(gridboxes(se[0],getdict=d))
+        try: d[key].remove(retValue[i]) 
+        except: pass
+        newset = set(gridboxes(se[1],getdict=d))
+        
+        for member in newset:
+            if member not in retValueSet:
+                retValueSet.add(member)
+        i += 1
+    return list(set(retValue)) # remove duplicates
     
 def CONNECTED(wholelist, initlist):
     # Make generic and approximate
@@ -1562,11 +1642,16 @@ def CUT():
     pcbnew.GetBoard().GetDrawings().Remove(cutter)
     #cutter.DeleteStructure()
     return None
-def DRAWPARAMS(c):
-    t,w,h,l = c[0].split(',') \
-    if isinstance(c[0],basestring) else c[0] \
-    if hasattr(c[0],'__iter__') else [c[0]]
-    _user_stacks['DRAWPARAMS'] = [t,w,h,l]
+def DRAWPARAMS(dims,layer):
+    t,w,h = dims.split(',') if isinstance(dims,basestring) else dims \
+    if hasattr(dims,'__iter__') else [dims]
+
+    try:
+        layerID = int(layer)
+    except:
+        layerID = pcbnew.GetBoard().GetLayerID(str(layer))
+
+    _user_stacks['drawparams'] = [t,w,h,layerID]
 
 def list_to_paired_list(input):
     a = iter(input)
@@ -1602,7 +1687,195 @@ def convert_to_points(input):
             # list_to_paired_list(i)
     # output( 'ctp3: ',input)
     # return input
+def FINDNET(netname):
+    # board has: 'BuildListOfNets', 'CombineAllAreasInNet', 'FindNet'
+    board = pcbnew.GetBoard()
+    # nets = board.GetNetsByName()
+    # netinfo = nets.find(netname).value()[1]
     
+    netinfo = board.FindNet(netname)
+    return netinfo.GetNet()
+
+
+class commands:
+    classinstance = None
+    def NEWNET(self,netname):
+        """Create a new net with name netname."""
+
+        board = pcbnew.GetBoard() 
+
+        # First create a new NETINFO_ITEM instance.
+        netinfo = pcbnew.NETINFO_ITEM(board, netname)
+
+        # Add this net to 'board', this will assign a 'net code' to your net.
+        board.AppendNet(netinfo)
+
+        # return the net code
+        return netinfo.GetNet()
+        
+        #Learn the net code:
+        #print(netinfo.GetNet())
+        #Assign net to a certain track:
+        #track.SetNetCode(netinfo.GetNet())
+    NEWNET.nargs = 1
+    NEWNET.category = 'Draw'
+    
+    def AREAS(self,empty):
+        """Return all Areas of the board (includes Zones and Keepouts)."""
+        b = pcbnew.GetBoard()
+        return [b.GetArea(i) for i in range(b.GetAreaCount())]
+        
+    AREAS.nargs = 0
+    AREAS.category = 'Elements,Area'
+
+    def ZONES(self,ignore):
+        """Return all Zones of the board."""
+        b = pcbnew.GetBoard()
+        return filter(lambda c: not c.IsKeepout(),[b.GetArea(i) for i in range(b.GetAreaCount())])
+    ZONES.nargs = 0
+    ZONES.category = 'Elements,Area'
+    # Example: clear toptextobj selected copy GetThickness call list swap topoints pairwise F.SilkS todrawsegments copy 2 pick SetWidth callargs pop F.Cu tocopper
+    # : texttosegments "Draw [TEXTOBJLIST LAYER] Copies text objects in TEXTOBJLIST to LAYER." swap copy GetThickness call list swap topoints pairwise swap todrawsegments copy 2 pick SetWidth callargs pop ;
+    
+    
+    # : texttosegments "Draw [TEXTOBJLIST LAYER] Copies text objects in TEXTOBJLIST to LAYER." swap copy GetThickness call list swap topoints pairwise 2 pick todrawsegments copy 2 pick SetWidth callargs pop swap pop swap pop ;
+    
+    # Usage: clear toptextobj selected Dwgs.User texttosegments F.Cu tocopper
+    def TOPOINTS(self,itemlist):
+        """[EDA_TEXTLIST] a list of EDA_TEXT items, which are converted to point pairs suitable for TODRAWSEGMENTS"""
+        #print 'itemlist: ',itemlist
+        # if not (hasattr(itemlist, '__getitem__') or hasattr(itemlist, '__iter__')):
+            # #print 'making into list'
+            # itemlist = [itemlist]
+        strokes = []
+        #for items in itemlist:
+        for t in itemlist[0]:
+        
+            strokes.append(pcbnew.wxPoint_Vector(0))
+            t.TransformTextShapeToSegmentList(strokes[-1])
+            # orient TEXTE_MODULE strokes to the board
+            # TEXTE_MODULE: oddly, the combination of draw rotation and 
+            # orientation is what's needed to determine the correct
+            # segments transformation only for TEXTE_MODULE object.
+
+            # orientation is specified ccw (leftward) from positive x-axis
+            if isinstance(t,pcbnew.TEXTE_MODULE):
+                orientation = t.GetDrawRotation()\
+                             -t.GetTextAngle() 
+                              
+                #print t.GetText(), orientation
+                strokes[-1] = self.get_rotated_vector(strokes[-1],t.GetCenter(),orientation)
+        return strokes
+    TOPOINTS.nargs = 1
+    TOPOINTS.category = 'Draw,Geometry'
+    
+    def pairwise(self,iterable):
+        "s -> (s0, s1), (s2, s3), (s4, s5), ..."
+        valuelist = []
+        #print 'iterable: ',iterable
+        for item in iterable[0]:
+            a = iter(item)
+            valuelist.append(list(izip(a, a)))
+        return valuelist
+    pairwise.nargs = 1
+    pairwise.category = 'Conversion'
+    
+    def KEEPOUTS(self,empty):
+        """Return all Keepouts of the board."""
+        b = pcbnew.GetBoard()
+        return filter(lambda c: c.IsKeepout(),[b.GetArea(i) for i in range(b.GetAreaCount())])
+    KEEPOUTS.nargs = 0
+    KEEPOUTS.category = 'Elements,Area'
+    
+    def AREACORNERS(self,arealist):
+        """Area Corners."""
+        b=pcbnew.GetBoard()
+        areacorners = [[a.GetCornerPosition(i) 
+            for i in range(a.GetNumCorners())] 
+                for a in arealist[0]]
+        return areacorners
+    AREACORNERS.nargs = 1
+    AREACORNERS.category = 'Geometry,Area'
+    
+    def REJOIN(self,empty):
+        'Using selected lines, move multiple connected lines to the isolated line.'
+        # Moves the set of coniguous lines or tracks to match the single line already moved.
+        run('drawings copytop selected')
+        # lines = _operand_stack[-1]
+        # if len(lines) <=2:
+            # return
+        # for line in lines:
+            # output( "Selected:", line.GetStart(), line.GetEnd())
+        # if isinstance(lines[0],pcbnew.TRACK):
+            # run('tracks')
+        # elif isinstance(lines[0],pcbnew.DRAWSEGMENT):
+            # run('drawings drawsegment filtertype')
+        # else:
+            # return
+            
+        # run('swap connected')
+        
+        #run('copy copy GetStart call swap GetEnd call append')
+        
+        # Stack is now: CONNECTED StartAndEndPoints
+        # recast the end points as tuples
+        lines_by_vertex = defaultdict(set) #{}
+        for line in _operand_stack[-1]:
+            # output( 'Connected: ',line)
+            for p in (line.GetStart(),line.GetEnd()):
+                lines_by_vertex[(p.x,p.y)].add(line)
+                #lines_by_vertex.setdefault((p.x,p.y),set()).add(line)
+                
+        # for vertex,lines in lines_by_vertex.iteritems():
+            # output( vertex,': ',lines)
+            
+        line_by_lonelyvertex = filter(lambda x: len(x[1])==1, lines_by_vertex.iteritems())
+        
+        # if both vertexes have only one line in lines_by_vertex, then it's the lonely line
+        lonely_line = []
+        connected_lines = []
+        for line in _operand_stack[-1]:
+            if len(lines_by_vertex[(line.GetStart().x,line.GetStart().y)]) == 1 \
+               and len(lines_by_vertex[(line.GetEnd().x,line.GetEnd().y)]) == 1:
+                lonely_line.append(line)
+            else:
+                connected_lines.append(line)
+        _operand_stack.pop()
+        # output( 'lonely',len(lonely_line),'; connected',len(connected_lines))
+        if len(lonely_line) != 1:
+            # output( 'no loney_line')
+            return
+            
+        lonely_line = lonely_line[0]
+        lonely_line_vertices = [(lonely_line.GetStart().x,lonely_line.GetStart().y),
+                                (lonely_line.GetEnd().x,lonely_line.GetEnd().y)]
+        lonely_vertices = [tup[0] for tup in line_by_lonelyvertex]
+        lonely_vertices.remove(lonely_line_vertices[0])
+        lonely_vertices.remove(lonely_line_vertices[1])
+        output( type(list(lines_by_vertex[lonely_vertices[0]])[0]))
+        vector = lonely_line.GetStart() - list(lines_by_vertex[lonely_vertices[0]])[0].GetEnd()
+        output( "Moving by",vector)
+        for line in connected_lines:
+            output( '\t',line.GetStart(),line.GetEnd())
+            line.Move(vector)
+            
+        # match lonely_line vertices to each of the other vertices by orientation
+        
+        
+        # find the vertices with only one line coincident.
+        # One of these is the lonely line, the other two are the polygon opening.
+        # Match topmost or left most coordinates of the lonely line to the opening.
+        # Now we have the vector of the Move, so Move the remaining lines.
+    REJOIN.nargs = 0
+    REJOIN.category = 'Action',
+
+
+    #'help': Command(0,lambda c: HELPMAIN(),'Help', "Shows general help"),
+commands.classinstance = commands()
+for c in filter(lambda x: hasattr(getattr(commands,x), '__call__'),dir(commands)):
+    f = getattr(commands.classinstance,c)
+    _dictionary ['command'][c.lower()] = Command(f.nargs,f,f.category,f.__doc__)
+
 def rotate_point(point,center,angle,ccw=True):
     # try:
         # center=center[0]
@@ -1851,20 +2124,29 @@ def HELPCAT(category):
     elif category == 'All':
         commands = uniondict.iteritems()
         
-
     if commands:
         cbyc = defaultdict(list)
         for command in commands:
-            cbyc[command[1].category].append(command[0])
+            try:
+                catlist = command[1].category.split(',')
+            except:
+                catlist = command[1].category
+            for cat in catlist:
+                cbyc[cat].append(command[0])
         catlen = max(map(len,cbyc.keys()))
         #output( format('{'+str(catlen)+'} - {}','CATEGORY'))
         #output( 'CATEGORY   -   COMMANDS IN THIS CATEGORY')
         output( '{:<{width}} - {}'.format('CATEGORY','COMMANDS IN THIS CATEGORY', width=catlen))
-        for category in sorted(cbyc.keys()):
-            output( '{:<{width}} - {}'.format(category,' '.join(cbyc[category]), width=catlen))
+        for cat in sorted(cbyc.keys()):
+            output( '{:<{width}} - {}'.format(cat,' '.join(cbyc[cat]), width=catlen))
         return
+    # list(set(list1).intersection(list2))    
+    try:
+        catset = set(category.split(','))
+    except:
+        catset = set(category)
         
-    commands = filter(lambda c: hasattr(c[1],'category') and c[1].category == category, uniondict.iteritems())
+    commands = filter(lambda c: hasattr(c[1],'category') and catset.intersection(c[1].category.split(',') if hasattr(c[1].category,'split') else c[1].category), uniondict.iteritems())
     commands = [command[0] for command in commands]
     commands.sort()
     for command in commands:
@@ -1930,10 +2212,6 @@ def HELP(textlist,category=None,exact=False):
 
 
 
-_dictionary = {'user':{}, 'persist':{}, 'command':{}}
-# collections.OrderedDict
-_command_dictionary = _dictionary ['command']
-_operand_stack = []
 _command_dictionary.update({
     # PCB Elements
     # ': board pcbnew GetBoard call ;'
@@ -2003,18 +2281,18 @@ _command_dictionary.update({
         '[objects] Select the objects'),
     'deselect': Command(1,lambda c: filter(lambda x: x.ClearSelected(), c[0]),'Action',
         '[objects] Deselect the objects'),
-    'rejoin': Command(0,lambda c: REJOIN(*c),'Action',
-        'Using selected lines, move multiple connected lines to the isolated line.'),
     'connect': Command(1,lambda c: CONNECT(*c),'Action',
         'Using selected lines, connect all vertices to each closest one.'),
     # Filter
     'length': Command(1, lambda c: LENGTH(*c),'Geometry',
         '[SEGMENTLIST] Get the length of each segment (works with '
         'segment and arc types'),
+    'setlength': Command(2, lambda c: SETLENGTH(*c),'Geometry',
+        '[SEGMENTLIST LENGTH] Set the length of each segment. Move connected segments accordingly.'),
     'ends': Command(1, lambda c: get_ds_ends(*c),'Geometry',
         'Get the end points of the drawsegment (works with segment and arc types'),
     'connected': Command(2,lambda c: CONNECTED(*c),'Filter',
-        '[WHOLE INITIAL] From objects in WHOLE, select those that are connected to objects in INITIAL (recursevely)'),
+        '[WHOLE INITIAL] From objects in WHOLE, return those that are connected to objects in INITIAL (recursevely)'),
     'matchreference': Command(2,lambda c: filter(lambda x: x.GetReference() in c[1].split(','), c[0]),'Filter',
         '[MODULES REFERENCE] Filter the MODULES and retain only those that match REFERENCE'),
     
@@ -2201,7 +2479,6 @@ _command_dictionary.update({
         '[OBJECT] Make OBJECT into a list (with only OBJECT in it).'),
     'delist': Command(1,lambda c: c[0][0],'Conversion',
         '[LIST] Output index 0 of LIST.'),
-    
 
     #'swap': Command(2,retNone(lambda c: _operand_stack[-1],_operand_stack[-2]=_operand_stack[-2],_operand_stack[-1])),
     # 'pick': Command(1,lambda c: _operand_stack.insert(-int(_operand_stack[-1])-1,_operand_stack[-2]),'Stack',
@@ -2234,7 +2511,8 @@ _command_dictionary.update({
         '[POINTS CENTER DEGREES] Rotate POINTS around CENTER. POINTS can be in '
         'multiple formats such as EDA_RECT or a list of one or more points.'),
     'rotate': Command(2,lambda c: ROTATE(*c),'Geometry',
-        '[SEGMENTLIST DEGREES] Rotate segments by DEGREES around additive center.'),
+        '[SEGMENTLIST DEGREES] Rotate segments by DEGREES around calculated '
+        'average center.'),
         
     'corners': Command(1,lambda c: CORNERS(*c),'Geometry',
         "[OBJECT] OBJECT is either a single object or a list of objects. "
@@ -2261,7 +2539,7 @@ _command_dictionary.update({
     'seeall': Command(0,lambda c: print_userdict(*c),'Help',
         '[COMMAND] Shows all previously-defined COMMANDs from the user dictionary. '
         'See the colon (:) command for more information.'),
-    'time': Command(0,lambda c: time.asctime(),'System',
+    'now': Command(0,lambda c: time.asctime(),'System',
         'Returns the current system time as a string.'),
     # 'createtext': Command(2,lambda c: )
     #def draw_arc(x1,y1,x2,y2,radius,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER_MM):
@@ -2286,21 +2564,33 @@ _command_dictionary.update({
         'within SEGMENTLIST by adding ARCs of specified RADIUS.'),
     'angle': Command(1,lambda c: ANGLE(*c),'Geometry',
         '[SEGMENTLIST] Return the angle of each segment in SEGMENTLIST.'),
-    'drawarc':Command(1,lambda c: draw_arc(50*pcbnew.IU_PER_MM,50*pcbnew.IU_PER_MM,radius,angle,layer=_user_stacks['drawparams'][3],thickness=_user_stacks['drawparams'][0]),'Draw',
+    'drawarctest':Command(1,lambda c: draw_arc(50*pcbnew.IU_PER_MM,50*pcbnew.IU_PER_MM,radius,angle,layer=_user_stacks['drawparams']['l'],thickness=_user_stacks['drawparams']['t']),'Draw',
         ""),
+    'drawarc':Command(2,lambda c: draw_arc(c[0][0],c[0][1],c[0][2],c[0][3],c[1],layer=_user_stacks['drawparams']['l'],thickness=_user_stacks['drawparams']['t']),'Draw',
+        "[STARTX,STARTY,CENTERX,CENTERY DEGREES] Draw an arc with the given parameters. Layer and Thickness are taken from the draw parameters (see params command)"),
     'remove':Command(1,lambda c: REMOVE(*c),'Layer',
         '[OBJECTORLIST] remove items from board. Works with any items in Modules, Tracks, or Drawings.'),
-    'todrawsegments':Command(2,lambda c: copper_to_ds(*c),'Layer',
-        '[TRACKLIST LAYER] copy tracks in TRACKLIST to drawsegments on LAYER. Copies width of each track.'),
-    'drawsegments':Command(1,lambda c: draw_segmentlist(c[0],layer=_user_stacks['drawparams'][3],thickness=_user_stacks['drawparams'][0]),'Draw',
+    'todrawsegments':Command(2,lambda c: todrawsegment(*c),'Layer',
+        '[LIST LAYER] copy tracks or point pairs in LIST to drawsegments on LAYER. Copies width of each track.'),
+    'drawsegments':Command(1,lambda c: draw_segmentlist(c[0],layer=_user_stacks['drawparams']['l'],thickness=_user_stacks['drawparams']['t']),'Draw',
         "[POINTSLIST] Points list is interpreted as pairs of X/Y values. Line segments are"
-        "drawn between all successive pairs of points, creating a connected sequence of lines."
+        "drawn between all successive pairs of points, creating a connected sequence of lines "
+        "where each point is a vertex in a polygon "
+        "as opposed to being just a list of line segments or point pairs. "
         "This command uses previously set drawparams and the points are in native units (nm) so using mm or mils commands is suggested."),
-    'drawtext': Command(2,lambda c: draw_text(c[0],c[1],_user_stacks['drawparams'][1:3],layer=_user_stacks['drawparams'][3],thickness=_user_stacks['drawparams'][0]),'Draw',
+    'drawtext': Command(2,lambda c: draw_text(c[0],c[1],[_user_stacks['drawparams']['w'],_user_stacks['drawparams']['h']],layer=_user_stacks['drawparams']['l'],thickness=_user_stacks['drawparams']['t']),'Draw',
         '[TEXT POSITION] Draws the TEXT at POSITION using previously set drawparams. Position is in native units (nm) so using mm or mils commands is suggested.'),
-    'drawparams': Command(4,lambda c: DRAWPARAMS(c),'Draw',
-        '[THICKNESS WIDTH HEIGHT LAYER] Set drawing parameters for future draw commands.\n'
-        'Example: 1,5,5 MM F.Fab LAYERNUMS append drawparams'),
+    'drawparams': Command(2,lambda c: DRAWPARAMS(c),'Draw',
+        '[THICKNESS,WIDTH,HEIGHT LAYER] Set drawing parameters for future draw commands.\n'
+        'Example: 1,5,5 mm F.Fab drawparams'),
+    'showparam': Command(0,lambda c: _user_stacks['drawparams'],'Draw',
+        'Return the draw parameters.'),
+    'findnet': Command(1,lambda c: FINDNET(*c),'Draw','[NETNAME] Returns the netcode of NETNAME.'),
+    'param': Command(2,lambda c: PARAM(*c),'Draw',
+        '[VALUESLIST KEYLIST] Set drawing parameters. Each member of VALUELIST is assigned to the '
+        'corresponding key in KEYLIST. Keys are "t,w,h,l,zt,zp" indicating Thickness, Width, Height, '
+        'Layer, ZoneType, ZonePriority. ZoneType is one of NO_HATCH, DIAGONAL_FULL, or DIAGONAL_EDGE.\n'
+        'Example: 1,5,5 mm t,w,h param'),
     'helpall': Command(0,lambda c: HELPALL(),'Help',
         "Shows detailed help on every command."),
     'help': Command(0,lambda c: HELPMAIN(),'Help',
@@ -2339,7 +2629,10 @@ def setcompilemode(val=True, dictionary='user'):
    This is affected by the commands : and ;"""
 _command_definition = []
 _user_dictionary = _dictionary['user']
-_user_stacks = {'drawparams':[0.3*pcbnew.IU_PER_MM,1*pcbnew.IU_PER_MM,1*pcbnew.IU_PER_MM,pcbnew.Dwgs_User]}
+_user_stacks = {'drawparams':
+{'t':0.3*pcbnew.IU_PER_MM, 'w':1*pcbnew.IU_PER_MM, 'h':1*pcbnew.IU_PER_MM,'l':pcbnew.Dwgs_User,
+'zt':pcbnew.CPolyLine.NO_HATCH,'zp':0}
+}
 # drawparams: thickness,width,height,layer
 
 def print_userdict(command=None):
@@ -2393,8 +2686,14 @@ def pad_to_drawsegment(pad):
     board = pcbnew.GetBoard()
     ds=pcbnew.DRAWSEGMENT(board)
     board.Add(ds)
-    ds.SetLayer(_user_stacks['drawparams'][3])
-    ds.SetWidth(max(1,int(_user_stacks['drawparams'][3])))
+    layer = _user_stacks['drawparams']['l']
+    try:
+        layerID = int(layer)
+    except:
+        layerID = pcbnew.GetBoard().GetLayerID(str(layer))
+
+    ds.SetLayer(layerID) # TODO: Set layer number from string
+    ds.SetWidth(max(1,int(_user_stacks['drawparams']['t'])))
 
     if pad.GetShape() in [pcbnew.PAD_SHAPE_RECT,
                           pcbnew.PAD_SHAPE_ROUNDRECT,
