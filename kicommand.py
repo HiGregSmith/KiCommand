@@ -379,8 +379,8 @@ def run(commandstring):
     #print 'User dictionary',_dictionary['user']
     return _operand_stack
 
-def retNone(function,args):
-    function(args)
+def retNone(function,*args):
+    function(*args)
 
 def UNDOCK():
     wx.aui.AuiManager.GetManager(aplugin.g).GetPane(aplugin.g).Float()
@@ -481,6 +481,12 @@ def draw_segmentlist(input,layer=pcbnew.Eco2_User,thickness=0.015*pcbnew.IU_PER_
     # input = temp
     
     #output( type(vector))
+    
+    try:
+        layer = int(layer)
+    except:
+        layer = pcbnew.GetBoard().GetLayerID(str(layer))
+        
     allsegments = []
     segments = []
     for shape in input:
@@ -1720,6 +1726,37 @@ class commands:
     NEWNET.nargs = 1
     NEWNET.category = 'Draw'
     
+    def getpads(self,items):
+        """[MODULES] Get pads of each module in MODULES."""
+        items = items[0]
+        p = []
+        for i in items:
+            p.extend(list(i.Pads()))
+        return p            
+    getpads.nargs = 1
+    getpads.category = 'Elements'
+    
+    def select(self,items):
+        '[objects] Select the objects'
+        filter(lambda x: x.SetSelected(), items[0])
+    select.nargs = 1
+    select.category = 'Action'
+    
+    def deselect(self,items):
+        '[objects] Deselect the objects'
+        filter(lambda x: x.ClearSelected(), items[0])
+    deselect.nargs = 1
+    deselect.category = 'Action'
+    
+    def pads(self,empty):
+        """Get all pads"""
+        p=[]
+        for m in pcbnew.GetBoard().GetModules():
+            p.extend(list(m.Pads()))
+        return p
+    pads.nargs = 0
+    pads.category = 'Elements'
+    
     def AREAS(self,empty):
         """Return all Areas of the board (includes Zones and Keepouts)."""
         b = pcbnew.GetBoard()
@@ -2236,8 +2273,6 @@ _command_dictionary.update({
         'Get the Board object'),
     'modules': Command(0,lambda c: pcbnew.GetBoard().GetModules(),'Elements',
         'Get all modules'),
-    'pads': Command(0,lambda c: pcbnew.GetBoard().GetPads(),'Elements',
-        'Get all pads'),
     'tracks': Command(0,lambda c: pcbnew.GetBoard().GetTracks(),'Elements',
         'Get all tracks (including vias)'),
     'drawings': Command(0,lambda c: pcbnew.GetBoard().GetDrawings(),'Elements',
@@ -2277,10 +2312,6 @@ _command_dictionary.update({
         ),
         
     # PCB Actions
-    'select': Command(1,lambda c: filter(lambda x: x.SetSelected(), c[0]),'Action',
-        '[objects] Select the objects'),
-    'deselect': Command(1,lambda c: filter(lambda x: x.ClearSelected(), c[0]),'Action',
-        '[objects] Deselect the objects'),
     'connect': Command(1,lambda c: CONNECT(*c),'Action',
         'Using selected lines, connect all vertices to each closest one.'),
     # Filter

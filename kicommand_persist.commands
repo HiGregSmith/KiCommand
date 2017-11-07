@@ -9,8 +9,8 @@
 :persist referencetext "Elements Get all module's Reference text as a string." modules GetReference call ;
 :persist not "Programming [VALUELIST] Invert the boolean value. False, 0, None becomes True and True, non-zero, non-empty list becomes False." ' = ;
 :persist copy "Programming Copies the top of the stack." 0 pick ;
-:persist setselect "Elements [OBJECTLIST] Sets the objects as Selected." SetSelected call ;
-:persist clearselect "Elements [OBJECTLIST] Sets the objects as Unselected." ClearSelected call ;
+:persist setselect "Elements [OBJECTLIST] Sets the objects as Selected." SetSelected call pop ;
+:persist clearselect "Elements [OBJECTLIST] Sets the objects as Unselected." ClearSelected call pop ;
 :persist orthogonal "Draw Make the angle between all elements a integer multiple 90 degrees." 90 makeangle ;
 :persist clearallselected "Elements Clear the selection of all items."
         modules copy GetReference call clearselect
