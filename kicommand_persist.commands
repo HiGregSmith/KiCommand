@@ -46,4 +46,9 @@
         copy 2 pick SetWidth callargs pop
         swap pop swap pop
         ;
-        
+:persist regularsize "Draw,Geometry [SIDELENGTH] [PARALLELANGLE] regularsize takes the selected segments, joins them into a regular polygon, then sizes the edges to the specified length, and places one of the edges parallel to the specified angle Example: 30 mm 0 regularsize"
+        drawings selected copy connect copy
+        regular copy copy length delist stack 4 pick swap /f 
+        scale copy delist list angle delist 2 pick swap -f rotate
+        pop pop
+        ;

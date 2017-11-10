@@ -225,7 +225,7 @@ class gui(kicommand_gui.kicommand_panel):
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(exc_type, fname, exc_tb.tb_lineno)  
+            #print(exc_type, fname, exc_tb.tb_lineno)  
             output(str(e))
             wx.MessageDialog(self.GetParent(),"Error 1 on line %s: %s"%
                (exc_tb.tb_lineno,str(e))).ShowModal()
@@ -434,11 +434,9 @@ def todrawsegment(*c):
             except:
                 width = _user_stacks['drawparams']['t']
                 
-            segments.append(draw_segment(
-                s[0],
-                s[1],
-                e[0],
-                e[1],
+            segments.append(draw_segmentwx(
+                s,
+                e,
                 layer=layerID,
                 thickness=width))
     return segments
@@ -454,20 +452,59 @@ def draw_segmentlist(input,layer=pcbnew.Eco2_User,thickness=0.015*pcbnew.IU_PER_
     # list of strings of comma separated points
     # list of wxPoint
     # list of lists of wxPoint
+
+    
+    # string: single polyline a single list of comma separated values
+    # list of numbers: single polyline
+    # list of wxPoints: single polyline
+    
+    # list of strings: multiple polylines, each string is a polyline
+    # list of list of numbers: multiple polylines
+    # list of list of wxPoints: multple polylines
+    
+    try:
+        layer = int(layer)
+    except:
+        layer = pcbnew.GetBoard().GetLayerID(str(layer))
+
     if isinstance(input,basestring):
-        input = input.split(',')
-    # Now, input is an actual list
+        #input = [input.split(',')]
+        return drawlistofpolylines([input],layer,thickness)
+        
+    if not hasattr(input,'__getitem__'):
+        input = list(input)
+
+    if isinstance(input[0],(float,int,pcbnew.wxPoint)):
+        input = [input]
+        #print '478 triggered',input
+        
+    return drawlistofpolylines(input,layer,thickness)
+    
+    # Here, input must be an iterable
+    if not hasattr(input,'__iter__'):
+        raise TypeError('%s expects argument to be a list or string.'%('command'))
+
+    
+    if not hasattr(input[0],'__iter__'):
+        return drawlistofpolylines([input],layer,thickness)
+    
+    return drawlistofpolylines(input,layer,thickness)
+    # Now, input is an actual list (of strings, or as it was passed to this function)
     # convert a list of strings (possibly comma separated) into a list of floats
     if isinstance(input[0],basestring):
         temp = []
-        input = map(lambda y: float(y),map(lambda x: temp.extend(x),[i.split(',') for i in input]))
+        input = map(lambda y: floatnoerror(y),map(lambda x: temp.extend(x),[i.split(',') for i in input]))
     # Now, input is a list of
-    # 1) individual floats, 2) wxPoints, or 3) wxPoint lists
-    # 1) individual floats, 2) wxPoints, or 3) wxPoint lists
-    if isinstance(input[0],float):
+    # 1) individual floats,
+    # 2) wxPoints,
+    # 3) wxPoint lists,
+    # 4) list of point pairs, or
+    # 5) list of list of point pairs
+    if not hasattr(input[0],'__iter__') and not isinstance(input[0],pcbnew.wxPoint):
+    #if isinstance(input[0],float):
         a = iter(input)
-        input = [[pcbnew.wxPoint(x,y) for x,y in izip(a, a)]]
-
+        input = [izip(a, a)]
+    
     if isinstance(input[0],pcbnew.wxPoint):
         input = [input]
     # Now we have a list of wxPoints or list of lists of wxPoints
@@ -481,11 +518,7 @@ def draw_segmentlist(input,layer=pcbnew.Eco2_User,thickness=0.015*pcbnew.IU_PER_
     # input = temp
     
     #output( type(vector))
-    
-    try:
-        layer = int(layer)
-    except:
-        layer = pcbnew.GetBoard().GetLayerID(str(layer))
+    drawlistofpolylines(input,layer,thickness)
         
     allsegments = []
     segments = []
@@ -495,13 +528,61 @@ def draw_segmentlist(input,layer=pcbnew.Eco2_User,thickness=0.015*pcbnew.IU_PER_
             a = iter(shape)
             shape = [pcbnew.wxPoint(int(x),int(y)) for x,y in izip(a, a)]
         for i in range(len(shape)-1):
-            segments.append(draw_segment(
-                shape[i][0],
-                shape[i][1],
-                shape[i+1][0],
-                shape[i+1][1],
+            segments.append(draw_segmentwx(
+                shape[i],
+                shape[i+1],
                 layer=layer,
                 thickness=thickness))
+        allsegments.append(segments)
+        segments = []
+    return allsegments
+    
+    
+def drawlistofpolylines(input_lop,layer,thickness):
+    #print 'in polylines: ',input_lop
+    allsegments = []
+    segments = []
+    for shape in input_lop:
+        # shape is always a single list of items to be considered a polyline
+        # Either 
+        # 1) string to be split, a list of numbers to be used alternately
+        #    in which case, each number or converted number is alternately x then y.
+        # 2) or a list of wxPoint, or a list of __getitem__ objects with two values
+        #    in which case each list value is an x/y pair.
+        numbers = shape
+        if isinstance(numbers,basestring):
+            output('string2')
+            numbers = map(lambda x: float(x),shape.split(','))
+        
+        if not hasattr(numbers[0],'__getitem__'):
+            #print 'zip triggered'
+            a=iter(numbers)
+            numbers = [(intnoerror(x),intnoerror(y)) for x,y in izip(a, a)]
+        for i in range(len(numbers)-1):
+            s = numbers[i]
+            e = numbers[i+1]
+
+            if not isinstance(numbers[i],pcbnew.wxPoint) or not isinstance(numbers[i],pcbnew.wxPoint):
+                try:
+                    s = pcbnew.wxPoint(numbers[i][0],numbers[i][1])
+                    e = pcbnew.wxPoint(numbers[i+1][0],numbers[i+1][1])
+                except:
+                    continue
+            segments.append(draw_segmentwx(s,e,layer=layer,thickness=thickness))
+# test commands:
+# Test single list of numbers:
+# 0,0,1,1 mm drawsegments
+# Test single list of list of numbers:
+# 0,0,1,1 mm list drawsegments
+# Test single list of numbers:
+# 0,0,1,1,2,2,3,3 mm list drawsegments
+# Test two lists of numbers:
+# 0,0,1,1 mm list 2,2,3,3 mm list append drawsegments
+# 0,0,1000000,1000000 ,2000000,2000000,3000000,3000000 append drawsegments
+# 0,0,1000000,1000000,2000000,2000000,3000000,3000000 drawsegments
+# 0,0,1000000,1000000 list 2000000,2000000,3000000,3000000 list append drawsegments
+# 0,0 mm wxpoint 1,1 mm wxpoint append 2,2 mm wxpoint append 3,3 mm wxpoint append drawsegments
+# 0,0 mm wxpoint 1,1 mm wxpoint append list 2,2 mm wxpoint 3,3 mm wxpoint append list append drawsegments
         allsegments.append(segments)
         segments = []
     return allsegments
@@ -1306,6 +1387,18 @@ def draw_segment(x1,y1,x2,y2,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER
     ds.SetWidth(max(1,int(thickness)))
     return ds
 
+def draw_segmentwx(startwxpoint,endwxpoint,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER_MM):
+    """Draws the line segment indicated by the x,y values
+    on the given layer and with the given thickness."""
+    board = pcbnew.GetBoard()
+    ds=pcbnew.DRAWSEGMENT(board)
+    board.Add(ds)
+    ds.SetStart(startwxpoint)
+    ds.SetEnd(endwxpoint)
+    ds.SetLayer(layer)
+    ds.SetWidth(max(1,int(thickness)))
+    return ds
+
 def layer(layer):
     try:
         return int(layer)
@@ -1833,6 +1926,89 @@ class commands:
         return areacorners
     AREACORNERS.nargs = 1
     AREACORNERS.category = 'Geometry,Area'
+    # Test:
+    # "m 81.38357,74.230848 5.612659,1.870887 5.211757,3.474503 2.138156,2.138157 10.958048,-6.1472 0.53454,5.078121 -1.06908,4.009044 -2.80633,4.276312 -2.539056,1.603616 1.202716,4.276312 9.48806,-2.939963 13.36348,8.686253 -8.95353,-0.4009 -2.13815,5.34539 -5.21176,-2.67269 -4.67722,4.54358 -2.40542,-3.0736 -4.009046,6.94901 -3.741775,4.27631 -4.142676,2.53906 1.870887,3.34087 v 3.34087 l -4.409948,2.53906 h -2.806329 l -2.80633,-0.53454 -0.267271,-2.00452 1.469982,-1.60362 0.668176,-0.4009 -0.53454,-1.73726 -4.142676,0.53454 -4.677217,-0.93544 -3.34087,-0.66817 -1.336347,-0.13364 -2.405428,3.87541 -1.469982,1.33635 -1.603616,0.66817 -5.479026,-0.66817 -2.405425,-2.80633 -0.133636,-1.60362 3.207235,-3.34087 1.870887,-2.53906 -2.80633,-2.93996 -2.672696,-4.40995 -0.668174,-2.40543 -4.409945,5.47903 -3.207234,-5.34539 -5.078121,2.13815 -3.474506,-6.14719 -8.285356,0.26726 13.229844,-8.418985 10.022607,4.81085 0.400905,-5.34539 -3.741775,-2.138156 -2.405425,-3.474503 -0.668173,-3.073601 v -7.884451 l 13.363474,5.078121 3.608139,-2.939965 5.211757,-2.271789 3.875408,-1.33635 2.138156,0.133636 3.207234,-3.474503 4.677217,-2.939965 2.405425,-0.668174 z" 1 mm fromsvg drawsegments
+    def fromsvg(self,inputs):
+        """[PATH_D_ATTRIBUTE SCALE] Converts SVG path element d attribute
+            to a list of coordinates suitable for drawelements. Applies SCALE
+            to all coordinates."""
+        #print path
+        path = inputs[0]
+        scale = inputs[1]
+        tokens = ['']
+        for char in path:
+            if char in '0123456789-+.':
+                tokens[-1] += char
+                continue
+            if tokens[-1]:
+                tokens.append('')
+            if char not in ' ,':
+                tokens[-1] += char
+        position = [0.0,0.0]
+        currenttoken = 0
+        listresult = []
+        #print tokens
+        scale = float(scale)
+        while currenttoken < len(tokens):
+            token = tokens[currenttoken]
+            try: 
+                x = float(token)*scale
+                currenttoken += 1
+                y = float(tokens[currenttoken])*scale
+                currenttoken += 1
+                position[0] += x
+                position[1] += y
+                listresult[-1].append((position[0],position[1]))
+                continue
+            except:
+                if token == 'm':
+                    currenttoken += 1
+                    position[0] = float(tokens[currenttoken])*scale
+                    currenttoken += 1
+                    position[1] = float(tokens[currenttoken])*scale
+                    currenttoken += 1
+                    listresult.append([(position[0],position[1])])
+                    continue
+                if token == 'l':
+                    currenttoken += 1
+                    position[0] += float(tokens[currenttoken])*scale
+                    currenttoken += 1
+                    position[1] += float(tokens[currenttoken])*scale
+                    currenttoken += 1
+                    #position = pcbnew.wxPoint(x,y)
+                    listresult[-1].append((position[0],position[1]))
+                    continue
+                if token == 'h':
+                    currenttoken += 1
+                    position[0] += float(tokens[currenttoken])*scale
+                    currenttoken += 1
+                    listresult[-1].append((position[0],position[1]))
+                    continue
+                if token == 'v':
+                    currenttoken += 1
+                    position[1] += float(tokens[currenttoken])*scale
+                    currenttoken += 1
+                    listresult[-1].append((position[0],position[1]))
+                    continue
+                if token == 'z':
+                    currenttoken += 1
+                    listresult[-1].append(listresult[-1][0])
+                    continue
+                output('Bad SVG token: %s'%token)
+        return listresult
+    fromsvg.nargs = 2
+    fromsvg.category = 'Geometry,Conversion'
+    
+    def tocommand(self,elementlist,commandname):
+        """[ELEMENTLIST COMMANDNAME] Generate a command named COMMANDNAME that 
+           draws the elements in ELEMENTLIST."""
+        kicommand.run(': %s "Draw Custom Drawing Command"'%commandname)
+        for element in elementlist:
+            s,e = element.GetStart(), element.GetEnd()
+            kicommand.run('%f,%f,%f,%f drawsegments'%(s[0],s[1],e[0],e[1]))
+        kicommand.run(';')
+    tocommand.nargs = 2
+    tocommand.category = 'Programming,Elements'
     
     def REJOIN(self,empty):
         'Using selected lines, move multiple connected lines to the isolated line.'
@@ -2054,8 +2230,10 @@ savepath = os.path.join(os.path.expanduser('~'),'kicad','kicommand')
 
 def LOAD(name,path=savepath):
     new_path = os.path.join(path, name)
+    #run('pop')
     #print name, path
     with open(new_path,'r') as f: run(f.read())
+    #run("'fakereturnvaluetobedeleted")
     
 
 def SAVE(name):
@@ -2189,6 +2367,23 @@ def HELPCAT(category):
     for command in commands:
         print_command_detail(command)
             
+def floatnoerror(value):
+    try:
+        return float(value)
+    except:
+        return value
+def intnoerror(value):
+    try:
+        return int(value)
+    except:
+        return value
+def multiplynoerror(value,multiplier):
+    try:
+        f = float(value)
+    except:
+        return value
+    return f*multiplier
+    
 def HELP(textlist,category=None,exact=False):
     # if text contains a space, it is interpreted as 
     # a list of space-separated commands and arguments.
@@ -2291,6 +2486,8 @@ _command_dictionary.update({
     'sindex': Command(2,lambda c: c[0][c[1]],'Attributes',
        '[DICTIONARYOBJECT STRINGINDEX] Select an item in the list of objects based on string INDEX'),
 
+    'index.': Command(2, lambda c: map(lambda x: x[int(c[1])],c[0]), 'Conversion',
+        '[LISTOFLISTS INDEX] return a list made up of the INDEX item of each list in LISTOFLISTS'),
     'index': Command(2,
                        lambda c: c[0][int(c[1])] if isinstance(c[1],basestring) \
                        and c[1].find(',') == -1 else map(lambda x: x[0][int(x[1])],
@@ -2412,17 +2609,20 @@ _command_dictionary.update({
     # r('clear referencetextobj valuetextobj moduletextobj append append copy GetTextBox call corners swap copy GetCenter call swap copy GetParent call Cast call GetOrientationDegrees call swap GetTextAngleDegrees call +l rotatepoints drawsegments')
     # # Outline the pads. Might be a problem with "bounding box" being orthogonal when pad is rotated.
     # r('clear pads copy GetBoundingBox call corners swap copy GetCenter call swap GetOrientationDegrees call rotatepoints drawsegments')
-    '+l': Command(2,lambda c:
+    '+.': Command(2,lambda c:
             [float(a)+float(b) for a,b in izip(c[0], cycle(c[1]))],'Numeric',
         '[LIST1 LIST2] Return the the floating point LIST1 + LIST2 member by member.'),
-    '+f': Command(2,lambda c:
+    '*.': Command(2,lambda c:
+            [float(a)*float(b) for a,b in izip(c[0], cycle(c[1]))],'Numeric',
+        '[LIST1 LIST2] Return the the floating point LIST1 * LIST2 member by member.'),
+    '+': Command(2,lambda c:
             float(c[0])+float(c[1]),'Numeric',
         '[OPERAND1 OPERAND2] Return the the floating point OPERAND1 + OPERAND2.'),
-    '-f': Command(2,lambda c: float(c[0])-float(c[1]),'Numeric',
+    '-': Command(2,lambda c: float(c[0])-float(c[1]),'Numeric',
         '[OPERAND1 OPERAND2] Return the the floating point OPERAND1 - OPERAND2.'),
-    '*f': Command(2,lambda c: float(c[0])*float(c[1]),'Numeric',
+    '*': Command(2,lambda c: float(c[0])*float(c[1]),'Numeric',
         '[OPERAND1 OPERAND2] Return the the floating point OPERAND1 * OPERAND2.'),
-    '/f': Command(2,lambda c: float(c[0])/float(c[1]),'Numeric',
+    '/': Command(2,lambda c: float(c[0])/float(c[1]),'Numeric',
         '[OPERAND1 OPERAND2] Return the the floating point OPERAND1 / OPERAND2.'),
     'sum': Command(1,lambda c: sum(*c),'Numeric',
         '[LIST] Return the sum of all members in LIST.'),
@@ -2471,8 +2671,8 @@ _command_dictionary.update({
         '[KEYS VALUES] Create a dictionary from KEYS and VALUES lists.'),
     #'mm': Command(1,lambda c: float(c[0])*pcbnew.IU_PER_MM,'Conversion'),
     'mm': Command(1,
-                       lambda c: float(c[0])*pcbnew.IU_PER_MM if isinstance(c[0],basestring) \
-                       and c[0].find(',') == -1 else map(lambda x: float(x)*pcbnew.IU_PER_MM,
+                       lambda c: multiplynoerror(c[0],pcbnew.IU_PER_MM) if isinstance(c[0],basestring) \
+                       and c[0].find(',') == -1 else map(lambda x: multiplynoerror(x,pcbnew.IU_PER_MM),
                        c[0].split(',')
                        if isinstance(c[0],basestring) else c[0]
                        if hasattr(c[0],'__iter__') else [c[0]]),
@@ -2482,8 +2682,8 @@ _command_dictionary.update({
         'be a string, a comma separated list of values, a list of strings, or '
         'list of numbers.'),
     'mil': Command(1,
-                       lambda c: float(c[0])*pcbnew.IU_PER_MILS if isinstance(c[0],basestring) \
-                       and c[0].find(',') == -1 else map(lambda x: float(x)*pcbnew.IU_PER_MILS,
+                       lambda c: multiplynoerror(c[0],pcbnew.IU_PER_MILS) if isinstance(c[0],basestring) \
+                       and c[0].find(',') == -1 else map(lambda x: multiplynoerror(x,pcbnew.IU_PER_MILS),
                        c[0].split(',')
                        if isinstance(c[0],basestring) else c[0]
                        if hasattr(c[0],'__iter__') else [c[0]]),
@@ -2493,8 +2693,8 @@ _command_dictionary.update({
         'be a string, a comma separated list of values, a list of strings, or '
         'list of numbers.'),
     'mils': Command(1,
-                       lambda c: float(c[0])*pcbnew.IU_PER_MILS if isinstance(c[0],basestring) \
-                       and c[0].find(',') == -1 else map(lambda x: float(x)*pcbnew.IU_PER_MILS,
+                       lambda c: multiplynoerror(c[0],pcbnew.IU_PER_MILS) if isinstance(c[0],basestring) \
+                       and c[0].find(',') == -1 else map(lambda x: multiplynoerror(x,pcbnew.IU_PER_MILS),
                        c[0].split(',')
                        if isinstance(c[0],basestring) else c[0]
                        if hasattr(c[0],'__iter__') else [c[0]]),
@@ -2801,3 +3001,4 @@ def pad_to_drawsegment(pad):
     
 aplugin.register(aplugin())
 aplugin().Run()
+
