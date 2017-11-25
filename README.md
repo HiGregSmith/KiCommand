@@ -26,8 +26,7 @@ Here are a few short examples:
 
 
 
-- Place the the files kicommand.py, kicommand_gui.py, and
-kicommand_persist.commands in 
+- Place the entire kicommand folder in 
 **C:\Program Files\KiCad\share\kicad\scripting\plugins**
 Or the equivalent in MacOS or Linux
 (*there may be a user-level directory for such files, but I am not aware of it at the moment.*)
