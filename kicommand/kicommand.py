@@ -6,6 +6,7 @@ import pcbnew
 import time
 import os, sys
 import math
+import re
 from textwrap import wrap
 import wx
 from wxpointutil import wxPointUtil
@@ -85,8 +86,8 @@ stack = []
 #
 
 # r('clear : valuetext modules Value call ; : referencetext modules Reference call ; : moduletext modules GraphicalItems calllist EDA_TEXT filtertype ;')
-# r('clear moduletext valuetext append referencetext append toptext append copy GetTextBox call corners swap copy GetCenter call swap GetTextAngle call rotatepoints drawsegments')
-# copy copy Value call swap Reference call append swap GraphicalItems calllist append toptext append         copy GetTextBox call corners swap copy GetCenter call swap GetTextAngleDegrees call rotatepoints drawsegments
+# r('clear moduletext valuetext append referencetext append toptext append copy GetTextBox call corners swap copy GetCenter call swap GetTextAngle call rotatepoints drawpoly')
+# copy copy Value call swap Reference call append swap GraphicalItems calllist append toptext append         copy GetTextBox call corners swap copy GetCenter call swap GetTextAngleDegrees call rotatepoints drawpoly
 
         # This allows simple command strings to be executed within pcbnew
         # The command string is in postfix format, and the current commands are:
@@ -184,6 +185,8 @@ DrawParams = collections.namedtuple('DrawParams','t w h l zt zp')
 
 # : drawparams list append t,w,h,l param ;
 # : drawparams 'l param t,w,h param ;
+# clear toptextobj selected topoints pairwise Dwgs.User tosegments
+# clear toptextobj selected copy GetThickness call swap topoints pairwise Dwgs.User tosegments
 
 #uc.execute(uc.string)
 def SHOWPARAM(values,keys):
@@ -326,7 +329,8 @@ def run(commandstring,returnval=0):
                     _dictionary[_newcommanddictionary][comm] = UserCommand(cdef,cat,help)
                 #output( "COMMAND %s DEFINITION %s\nCategory: {%s} Help: {%s}"%(comm,cdef,cat,help))
                 else:
-                    _dictionary[_newcommanddictionary][comm] = ' '.join(cdef)
+                    _dictionary[_newcommanddictionary][comm] = UserCommand(cdef,'','')
+                    #_dictionary[_newcommanddictionary][comm] = ' '.join(cdef)
             else: # delete a command in the user dictionary: ': COMMAND ;'
                 del(_user_dictionary[_command_definition[0]])
             _command_definition = []
@@ -413,7 +417,7 @@ def CLEAR():
 def SWAP():
     global stack
     stack[-1],stack[-2]=stack[-2],stack[-1]
-
+# clear modules selected Reference call 0 bool list list SetVisible stack
 def output(*args):
 
     for arg in args:
@@ -425,7 +429,7 @@ def output(*args):
         print arg,
     print
 
-def todrawsegment(*c):
+def tosegments(*c):
     tracklist,layer = c
     #print 'tracklist: ',tracklist
     try:
@@ -444,7 +448,10 @@ def todrawsegment(*c):
                 width = t.GetWidth()
             except:
                 width = _user_stacks['drawparams']['t']
-                
+            if not isinstance(s,pcbnew.wxPoint):
+                s = pcbnew.wxPoint(*s)
+            if not isinstance(e,pcbnew.wxPoint):
+                e = pcbnew.wxPoint(*e)
             segments.append(draw_segmentwx(
                 s,
                 e,
@@ -582,18 +589,18 @@ def drawlistofpolylines(input_lop,layer,thickness):
             segments.append(draw_segmentwx(s,e,layer=layer,thickness=thickness))
 # test commands:
 # Test single list of numbers:
-# 0,0,1,1 mm drawsegments
+# 0,0,1,1 mm drawpoly
 # Test single list of list of numbers:
-# 0,0,1,1 mm list drawsegments
+# 0,0,1,1 mm list drawpoly
 # Test single list of numbers:
-# 0,0,1,1,2,2,3,3 mm list drawsegments
+# 0,0,1,1,2,2,3,3 mm list drawpoly
 # Test two lists of numbers:
-# 0,0,1,1 mm list 2,2,3,3 mm list append drawsegments
-# 0,0,1000000,1000000 ,2000000,2000000,3000000,3000000 append drawsegments
-# 0,0,1000000,1000000,2000000,2000000,3000000,3000000 drawsegments
-# 0,0,1000000,1000000 list 2000000,2000000,3000000,3000000 list append drawsegments
-# 0,0 mm wxpoint 1,1 mm wxpoint append 2,2 mm wxpoint append 3,3 mm wxpoint append drawsegments
-# 0,0 mm wxpoint 1,1 mm wxpoint append list 2,2 mm wxpoint 3,3 mm wxpoint append list append drawsegments
+# 0,0,1,1 mm list 2,2,3,3 mm list append drawpoly
+# 0,0,1000000,1000000 ,2000000,2000000,3000000,3000000 append drawpoly
+# 0,0,1000000,1000000,2000000,2000000,3000000,3000000 drawpoly
+# 0,0,1000000,1000000 list 2000000,2000000,3000000,3000000 list append drawpoly
+# 0,0 mm wxpoint 1,1 mm wxpoint append 2,2 mm wxpoint append 3,3 mm wxpoint append drawpoly
+# 0,0 mm wxpoint 1,1 mm wxpoint append list 2,2 mm wxpoint 3,3 mm wxpoint append list append drawpoly
         allsegments.append(segments)
         segments = []
     return allsegments
@@ -1410,6 +1417,7 @@ def draw_segmentwx(startwxpoint,endwxpoint,layer=pcbnew.Dwgs_User,thickness=0.15
     else:
         ds=pcbnew.DRAWSEGMENT(board)
     board.Add(ds)
+    #print startwxpoint
     ds.SetStart(startwxpoint)
     ds.SetEnd(endwxpoint)
     ds.SetLayer(layer)
@@ -1881,11 +1889,11 @@ class commands:
         return filter(lambda c: not c.IsKeepout(),[b.GetArea(i) for i in range(b.GetAreaCount())])
     ZONES.nargs = 0
     ZONES.category = 'Elements,Area'
-    # Example: clear toptextobj selected copy GetThickness call list swap topoints pairwise F.SilkS todrawsegments copy 2 pick SetWidth callargs pop F.Cu tocopper
-    # : texttosegments "Draw [TEXTOBJLIST LAYER] Copies text objects in TEXTOBJLIST to LAYER." swap copy GetThickness call list swap topoints pairwise swap todrawsegments copy 2 pick SetWidth callargs pop ;
+    # Example: clear toptextobj selected copy GetThickness call list swap topoints pairwise F.SilkS tosegments copy 2 pick SetWidth callargs pop F.Cu tocopper
+    # : texttosegments "Draw [TEXTOBJLIST LAYER] Copies text objects in TEXTOBJLIST to LAYER." swap copy GetThickness call list swap topoints pairwise swap tosegments copy 2 pick SetWidth callargs pop ;
     
     
-    # : texttosegments "Draw [TEXTOBJLIST LAYER] Copies text objects in TEXTOBJLIST to LAYER." swap copy GetThickness call list swap topoints pairwise 2 pick todrawsegments copy 2 pick SetWidth callargs pop swap pop swap pop ;
+    # : texttosegments "Draw [TEXTOBJLIST LAYER] Copies text objects in TEXTOBJLIST to LAYER." swap copy GetThickness call list swap topoints pairwise 2 pick tosegments copy 2 pick SetWidth callargs pop swap pop swap pop ;
     
     # Usage: clear toptextobj selected Dwgs.User texttosegments F.Cu tocopper
     def TOPOINTS(self,itemlist):
@@ -1944,7 +1952,7 @@ class commands:
     AREACORNERS.nargs = 1
     AREACORNERS.category = 'Geometry,Area'
     # Test:
-    # "m 81.38357,74.230848 5.612659,1.870887 5.211757,3.474503 2.138156,2.138157 10.958048,-6.1472 0.53454,5.078121 -1.06908,4.009044 -2.80633,4.276312 -2.539056,1.603616 1.202716,4.276312 9.48806,-2.939963 13.36348,8.686253 -8.95353,-0.4009 -2.13815,5.34539 -5.21176,-2.67269 -4.67722,4.54358 -2.40542,-3.0736 -4.009046,6.94901 -3.741775,4.27631 -4.142676,2.53906 1.870887,3.34087 v 3.34087 l -4.409948,2.53906 h -2.806329 l -2.80633,-0.53454 -0.267271,-2.00452 1.469982,-1.60362 0.668176,-0.4009 -0.53454,-1.73726 -4.142676,0.53454 -4.677217,-0.93544 -3.34087,-0.66817 -1.336347,-0.13364 -2.405428,3.87541 -1.469982,1.33635 -1.603616,0.66817 -5.479026,-0.66817 -2.405425,-2.80633 -0.133636,-1.60362 3.207235,-3.34087 1.870887,-2.53906 -2.80633,-2.93996 -2.672696,-4.40995 -0.668174,-2.40543 -4.409945,5.47903 -3.207234,-5.34539 -5.078121,2.13815 -3.474506,-6.14719 -8.285356,0.26726 13.229844,-8.418985 10.022607,4.81085 0.400905,-5.34539 -3.741775,-2.138156 -2.405425,-3.474503 -0.668173,-3.073601 v -7.884451 l 13.363474,5.078121 3.608139,-2.939965 5.211757,-2.271789 3.875408,-1.33635 2.138156,0.133636 3.207234,-3.474503 4.677217,-2.939965 2.405425,-0.668174 z" 1 mm fromsvg drawsegments
+    # "m 81.38357,74.230848 5.612659,1.870887 5.211757,3.474503 2.138156,2.138157 10.958048,-6.1472 0.53454,5.078121 -1.06908,4.009044 -2.80633,4.276312 -2.539056,1.603616 1.202716,4.276312 9.48806,-2.939963 13.36348,8.686253 -8.95353,-0.4009 -2.13815,5.34539 -5.21176,-2.67269 -4.67722,4.54358 -2.40542,-3.0736 -4.009046,6.94901 -3.741775,4.27631 -4.142676,2.53906 1.870887,3.34087 v 3.34087 l -4.409948,2.53906 h -2.806329 l -2.80633,-0.53454 -0.267271,-2.00452 1.469982,-1.60362 0.668176,-0.4009 -0.53454,-1.73726 -4.142676,0.53454 -4.677217,-0.93544 -3.34087,-0.66817 -1.336347,-0.13364 -2.405428,3.87541 -1.469982,1.33635 -1.603616,0.66817 -5.479026,-0.66817 -2.405425,-2.80633 -0.133636,-1.60362 3.207235,-3.34087 1.870887,-2.53906 -2.80633,-2.93996 -2.672696,-4.40995 -0.668174,-2.40543 -4.409945,5.47903 -3.207234,-5.34539 -5.078121,2.13815 -3.474506,-6.14719 -8.285356,0.26726 13.229844,-8.418985 10.022607,4.81085 0.400905,-5.34539 -3.741775,-2.138156 -2.405425,-3.474503 -0.668173,-3.073601 v -7.884451 l 13.363474,5.078121 3.608139,-2.939965 5.211757,-2.271789 3.875408,-1.33635 2.138156,0.133636 3.207234,-3.474503 4.677217,-2.939965 2.405425,-0.668174 z" 1 mm fromsvg drawpoly
     # https://www.w3.org/TR/SVG11/paths.html#PathDataGeneralInformation
 
     def fromsvg(self,inputs):
@@ -2024,7 +2032,7 @@ class commands:
         kicommand.run(': %s "Draw Custom Drawing Command"'%commandname)
         for element in elementlist:
             s,e = element.GetStart(), element.GetEnd()
-            kicommand.run('%f,%f,%f,%f drawsegments'%(s[0],s[1],e[0],e[1]))
+            kicommand.run('%f,%f,%f,%f drawpoly'%(s[0],s[1],e[0],e[1]))
         kicommand.run(';')
     tocommand.nargs = 2
     tocommand.category = 'Programming,Elements'
@@ -2101,12 +2109,105 @@ class commands:
     REJOIN.nargs = 0
     REJOIN.category = 'Action',
 
+    
+    def printf(self, *arglist):
+        'Output [LISTOFLISTS FORMAT] Output each list within LISTOFLISTS formatted according to FORMAT in Pythons {} string format (https://www.python.org/dev/peps/pep-3101/).'
+        print('Format:',arglist[0][1])
+        
+        
+        for item in arglist[0][0]:
+            print "item:",item
+            output(arglist[0][1].format(*item))
+            
+    def fprintf(self, *arglist):
+        'Output [LISTOFLISTS FORMAT FILENAME] Output to FILENAME each list within LISTOFLISTS formatted according to FORMAT in Pythons {} string format (https://www.python.org/dev/peps/pep-3101/).'
+        arglist = arglist[0]
+        #print('Format:',arglist[1])
+        filename = os.path.join(os.getcwd(),arglist[2])
+        with open(filename,'w') as f: 
+            for item in arglist[0]:
+                #print "item:",item
+                f.write(arglist[1].format(*item))
+        
+    def pwd(self,empty):
+        "Programming Return the present working directory."
+        return os.getcwd()
+        
+    def cduser(self,empty):
+        "Programming Change working directory to ~/kicad/kicommand."
+        os.chdir(USERSAVEPATH)
+        
+    def cd(self,path):
+        "Programming [PATH] Change working directory to PATH."
+        os.chdir(path[0])
+        
+    def cdproject(self,empty):
+        "Programming Return the project directory (location of .kicad_pcb file)."
+        os.chdir(PROJECTPATH)
+        
+    def regex(self, *arglist):
+        'Comparison [LIST REGEX] Create a LIST of True/False values corresponding to whether the values in LIST match the REGEX (for use prior to FILTER)'
+        stringlist, regex_ = arglist[0]
+        #print stringlist, regex_
+    # Format of comment is: 'Category [ARGUMENT1 ARGUMENT2] Description'
+        prog = re.compile(regex_)
+        return map(lambda s: prog.match(s),stringlist)
+#        '=': Command(2,lambda c: map(lambda x: x==c[1],c[0]),'Comparison',
+    def callargs(self,*c):
+        'Call [OBJECTLIST ARGLISTOFLISTS FUNCTION] Execute python FUNCTION on each member '
+        'of OBJECTLIST with arguments in ARGLISTOFLISTS. ARGLISTOFLISTS can be '
+        'a different length than OBJECTLIST, in which case ARGLISTOFLISTS '
+        'elements will be repeated (or truncated) to match the length of '
+        'OBJECTLIST. Returns the list of results in the same order as the '
+        'original OBJECTLIST. The commands LIST and ZIP2 will be helpful '
+        'here. ARGLISTOFLISTS can also be a single list or a single value, '
+        'in which case the value will be converted to a list of lists.'
+        c = c[0]
+        #print c
+        args = c[1]
+        
+        if hasattr(args,'__getitem__'):
+            if not hasattr(args[0],'__getitem__'):
+                args = [args]
+        else:
+            args = [[args]]
+            
+        return map(lambda x: 
+            getattr(x[0],c[2])(*(x[1])), 
+            izip(c[0], cycle(args))
+            )
 
+################## END OF COMMANDS CLASS ###########################
+            
+    #modules copy GetReference call .*EF.* regex isnotnone filter Reference call false SetVisible callargs
+    #modules *.EF.* regexref refobj clearvisible
     #'help': Command(0,lambda c: HELPMAIN(),'Help', "Shows general help"),
+    
 commands.classinstance = commands()
 for c in filter(lambda x: hasattr(getattr(commands,x), '__call__'),dir(commands)):
     f = getattr(commands.classinstance,c)
-    _dictionary ['command'][c.lower()] = Command(f.nargs,f,f.category,f.__doc__)
+    if hasattr(f,'category'):
+        _dictionary ['command'][c.lower()] = Command(f.nargs,f,f.category,f.__doc__)
+    else:
+        # Format of comment is: 'Category [ARGUMENT1 ARGUMENT2] Description'
+        # from beginning, Search for first letter, then first space
+        # Extract and trim, then split on ',' for classes
+        # from the space, find first non space.
+        # If character is '[' then search for first ']'.
+        # Extract for arguments, trim, then split on ' '
+        # after ']' find first space then first nonspace.
+        # The remainder of the line is description
+        nargs = 0
+        category, doc = f.__doc__.split(' ', 1)
+        if doc[0] == '[':
+            arg = doc[1:].split(']',1)[0].split()
+            if arg:
+                nargs = len(arg)
+            # print c,':',arg
+        # else:
+            # print c,':',numarg
+        _dictionary ['command'][c.lower()] = Command(nargs,f,category,doc)
+
 
 def rotate_point(point,center,angle,ccw=True):
     # try:
@@ -2245,23 +2346,31 @@ def CORNERS_old(c):
         #elif isinstance(poly[0],pcbnew.wxPoint):
     return xyvals
 
-savepath = os.path.join(os.path.expanduser('~'),'kicad','kicommand')
+import inspect
+USERSAVEPATH = os.path.join(os.path.expanduser('~'),'kicad','kicommand')
+os.chdir(USERSAVEPATH)
 
-def LOAD(name,path=savepath):
-    new_path = os.path.join(path, name)
-    #run('pop')
-    #print name, path
-    with open(new_path,'r') as f: run(f.read())
-    #run("'fakereturnvaluetobedeleted")
+KICOMMAND_MODULE_DIR = os.path.dirname(inspect.stack()[0][1])
+LOADABLE_DIR = os.path.join(KICOMMAND_MODULE_DIR,'loadable')
+USERLOADPATH = USERSAVEPATH+':'+LOADABLE_DIR
+PROJECTPATH = os.path.dirname(pcbnew.GetBoard().GetFileName())
+# for i in range(len(inspect.stack())):
+    # print i,inspect.stack()[i][1]
     
+def LOAD(name,path=USERLOADPATH):
+    for p in path.split(':'):
+        new_path = os.path.join(p, name)
+        if not os.path.isfile(new_path):
+            continue
+        with open(new_path,'r') as f: run(f.read())
 
 def SAVE(name):
     dictname = 'user'
-    if not os.path.exists(savepath):
-        os.makedirs(savepath)
+    if not os.path.exists(USERSAVEPATH):
+        os.makedirs(USERSAVEPATH)
         output('created ~/kicad/kicommand')
     output("saving to %s"%name)
-    new_path = os.path.join(savepath, name)
+    new_path = os.path.join(USERSAVEPATH, name)
     with open(new_path,'w') as f:
         commands = _dictionary[dictname].iteritems()
         for command,definition in sorted(commands,key=lambda x:x[0]):
@@ -2361,6 +2470,7 @@ def HELPCAT(category):
     if commands:
         cbyc = defaultdict(list)
         for command in commands:
+            #print command[1]
             try:
                 catlist = command[1].category.split(',')
             except:
@@ -2561,6 +2671,10 @@ _command_dictionary.update({
         'TYPE must be an attribute of pcbnew.' ),
     '=': Command(2,lambda c: map(lambda x: x==c[1],c[0]),'Comparison',
         '[LIST VALUE] Create a LIST of True/False values corresponding to whether the values in LIST equal to VALUE (for use prior to FILTER)'),
+    'isnone': Command(1,lambda c: map(lambda x: x is None,c[0]),'Comparison',
+        '[LIST VALUE] Create a LIST of True/False values corresponding to whether the values in LIST equal to None (for use prior to FILTER)'),
+    'isnotnone': Command(1,lambda c: map(lambda x: x is not None,c[0]),'Comparison',
+        '[LIST VALUE] Create a LIST of True/False values corresponding to whether the values in LIST is not  None (for use prior to FILTER)'),
 #x=lambda c: map(lambda x: float(x),c.split(',')) if isinstance(c,basestring) else map(lambda x: float(x),c)
     'undock': Command(0,lambda c: UNDOCK(*c),'Interface',
         'Undock the window.'),
@@ -2603,29 +2717,34 @@ _command_dictionary.update({
         'here.'),
  
     
-    'call': Command(2,lambda c: map(lambda x: getattr(x,c[1])(), c[0]),'Call',
+    'call': Command(2,lambda c: map(lambda x: getattr(x,c[1])(), c[0]) 
+        # if hasattr(c[0],'__getitem__') and hasattr(c[0][0],'__getitem__') else 
+        # map(lambda x: getattr(x,c[1])(), [c[0]])
+        # if hasattr(c[0],'__getitem__') else  
+        # map(lambda x: getattr(x,c[1])(), [[c[0]]])
+        ,'Call',
         '[LIST FUNCTION] Execute python FUNCTION on each member of LIST. Return the list of results in the same order as the original LIST.'),
     'callfilter': Command(2,lambda c: filter(lambda x: getattr(x,c[1])(), c[0]),'Call',
-        '[LIST FUNCTION] Execute python FUNCTION on each member of LIST. Filter results that return False.'),
+        '[LIST FUNCTION] Execute python FUNCTION on each member of LIST. Return results that return True.'),
     'callnotfilter': Command(2,lambda c: filter(lambda x: not getattr(x,c[1])(), c[0]),'Call',
-        '[LIST FUNCTION] Execute python FUNCTION on each member of LIST. Filter results that return True.'),
-    'callargs': Command(3,
-                lambda c: 
-                map(lambda x: 
-                        getattr(x[0],c[2])(*(x[1])), 
-                        izip(c[0], cycle(c[1]))
-                   )
-                ,'Call',
-                #        zip(c[0],c[1][0:len(c[0])])
-                # itertools.izip(c[0], itertools.cycle(c[1]))
-                #list(itertools.izip([1,2,3], itertools.cycle([4,5])))
-        '[OBJECTLIST ARGLISTOFLISTS FUNCTION] Execute python FUNCTION on each member '
-        'of OBJECTLIST with arguments in ARGLISTOFLISTS. ARGLISTOFLISTS can be '
-        'a different length than OBJECTLIST, in which case ARGLISTOFLISTS '
-        'elements will be repeated (or truncated) to match the length of '
-        'OBJECTLIST. Returns the list of results in the same order as the '
-        'original OBJECTLIST. The commands LIST and ZIP2 will be helpful '
-        'here.'),
+        '[LIST FUNCTION] Execute python FUNCTION on each member of LIST. Return results that return False.'),
+    # 'callargs': Command(3,
+                # lambda c: 
+                # map(lambda x: 
+                        # getattr(x[0],c[2])(*(x[1])), 
+                        # izip(c[0], cycle(c[1]))
+                   # )
+                # ,'Call',
+                # #        zip(c[0],c[1][0:len(c[0])])
+                # # itertools.izip(c[0], itertools.cycle(c[1]))
+                # #list(itertools.izip([1,2,3], itertools.cycle([4,5])))
+        # '[OBJECTLIST ARGLISTOFLISTS FUNCTION] Execute python FUNCTION on each member '
+        # 'of OBJECTLIST with arguments in ARGLISTOFLISTS. ARGLISTOFLISTS can be '
+        # 'a different length than OBJECTLIST, in which case ARGLISTOFLISTS '
+        # 'elements will be repeated (or truncated) to match the length of '
+        # 'OBJECTLIST. Returns the list of results in the same order as the '
+        # 'original OBJECTLIST. The commands LIST and ZIP2 will be helpful '
+        # 'here.'),
     # Move all module's Value text to Dwgs.User layer
     # r('modules Value call Dwgs.User layernums list SetLayer callargs')
     # Move only selected module's Value text to Dwgs.User layer
@@ -2633,9 +2752,9 @@ _command_dictionary.update({
     # Numeric
     
     # Outline all module text objects, including value and reference.
-    # r('clear referencetextobj valuetextobj moduletextobj append append copy GetTextBox call corners swap copy GetCenter call swap copy GetParent call Cast call GetOrientationDegrees call swap GetTextAngleDegrees call +l rotatepoints drawsegments')
+    # r('clear referencetextobj valuetextobj moduletextobj append append copy GetTextBox call corners swap copy GetCenter call swap copy GetParent call Cast call GetOrientationDegrees call swap GetTextAngleDegrees call +l rotatepoints drawpoly')
     # # Outline the pads. Might be a problem with "bounding box" being orthogonal when pad is rotated.
-    # r('clear pads copy GetBoundingBox call corners swap copy GetCenter call swap GetOrientationDegrees call rotatepoints drawsegments')
+    # r('clear pads copy GetBoundingBox call corners swap copy GetCenter call swap GetOrientationDegrees call rotatepoints drawpoly')
     '+.': Command(2,lambda c:
             [float(a)+float(b) for a,b in izip(c[0], cycle(c[1]))],'Numeric',
         '[LIST1 LIST2] Return the the floating point LIST1 + LIST2 member by member.'),
@@ -2681,6 +2800,17 @@ _command_dictionary.update({
         '[OBJECT] Return OBJECT as a floating point value or list. OBJECT can '
         'be a string, a comma separated list of values, a list of strings, or '
         'list of numbers.', ),
+    'bool': Command(1,
+    # if basestring and has ','
+                       lambda c: bool(c[0]) if isinstance(c[0],basestring) \
+                       and c[0].find(',') == -1 else map(lambda x: bool(x),
+                       c[0].split(',')
+                       if isinstance(c[0],basestring) else c[0]
+                       if hasattr(c[0],'__iter__') else [c[0]]),
+                       'Conversion',
+        '[OBJECT] Return OBJECT as a boolean value or list. OBJECT can '
+        'be a string, a comma separated list of values, a list of strings, or '
+        'list of values.', ),
     'int': Command(1,
     # if basestring and has ','
                        lambda c: intnoerror(c[0]) if isinstance(c[0],basestring) \
@@ -2755,6 +2885,10 @@ _command_dictionary.update({
     'zip2': Command(2,lambda c: zip(*c),'Stack',
         '[LIST1 LIST2] Creates a list with parallel objects in LIST1 and '
         'LIST2 together at the same index.'),
+    'zip': Command(1,lambda c: zip(*c[0]),'Stack',
+        '[LISTOFLISTS] Creates a list with parallel objects formed by each list '
+        'in LISTOFLISTS ((1,2,3)(4,5,6)(7,8,9)) -> ((1,4,7)(2,5,8)(3,6,9)).'
+        ),
     ':': Command(0,lambda c: setcompilemode(True),'Programming',
         'Begin the definition of a new command. This is the only command in '
         'which arguments occur after the command. Command definition ends with '
@@ -2779,7 +2913,7 @@ _command_dictionary.update({
     'corners': Command(1,lambda c: CORNERS(*c),'Geometry',
         "[OBJECT] OBJECT is either a single object or a list of objects. "
         "Converts each OBJECT, either EDA_RECT or OBJECT's BoundingBox "
-        "into vertices appropriate for drawsegments."
+        "into vertices appropriate for drawpoly."
         ),
     
     'tocopper': Command(2,lambda c: TOCOPPER(*c),'Layer',
@@ -2832,9 +2966,9 @@ _command_dictionary.update({
         "[STARTX,STARTY,CENTERX,CENTERY DEGREES] Draw an arc with the given parameters. Layer and Thickness are taken from the draw parameters (see params command)"),
     'remove':Command(1,lambda c: REMOVE(*c),'Layer',
         '[OBJECTORLIST] remove items from board. Works with any items in Modules, Tracks, or Drawings.'),
-    'todrawsegments':Command(2,lambda c: todrawsegment(*c),'Layer',
-        '[LIST LAYER] copy tracks or point pairs in LIST to drawsegments on LAYER. Copies width of each track.'),
-    'drawsegments':Command(1,lambda c: draw_segmentlist(c[0],layer=_user_stacks['drawparams']['l'],thickness=_user_stacks['drawparams']['t']),'Draw',
+    'tosegments':Command(2,lambda c: tosegments(*c),'Layer',
+        '[LIST LAYER] copy tracks or point pairs in LIST to drawpoly on LAYER. Copies width of each track.'),
+    'drawpoly':Command(1,lambda c: draw_segmentlist(c[0],layer=_user_stacks['drawparams']['l'],thickness=_user_stacks['drawparams']['t']),'Draw',
         "[POINTSLIST] Points list is interpreted as pairs of X/Y values. Line segments are"
         "drawn between all successive pairs of points, creating a connected sequence of lines "
         "where each point is a vertex in a polygon "
@@ -2867,7 +3001,7 @@ _command_dictionary.update({
         '[PADLIST] draws outlines around pad on DRAWPARAMS layer.'),
     'load': Command(1,lambda c: LOAD(*c),'Programming',
         '[FILENAME] executes commands from FILENAME. relative to '
-        '~/kicad/kicommand. Note that this command is not '
+        '~/kicad/kicommand then $KICOMMAND_MODULE_DIR/loadable. Note that this command is not '
         'totally symmetric with the save command.'),
     'save': Command(1,lambda c: SAVE(*c),'Programming',
         '[FILENAME] saves the user dictionary into FILENAME relative to '
@@ -3045,6 +3179,7 @@ def pad_to_drawsegment(pad):
     # pass
 
     
-aplugin.register(aplugin())
-aplugin().Run()
+# plugin = aplugin()
+# aplugin.register(plugin)
+# plugin.Run()
 

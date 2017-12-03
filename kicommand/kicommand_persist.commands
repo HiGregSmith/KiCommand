@@ -23,7 +23,7 @@
         ;
 :persist outlinepads "Draw Outline all pads using line segments with the layer and width specified by drawparams." 
         pads copy corners swap copy GetCenter call swap 
-        GetOrientationDegrees call rotatepoints drawsegments
+        GetOrientationDegrees call rotatepoints drawpoly
         ;
 :persist outlinetext "Draw Outline all text objects with the layer and width specified by drawparams."
         valuetextobj
@@ -32,17 +32,17 @@
         toptextobj append
         copy GetTextBox call corners swap copy GetCenter call swap 
         copy GetTextAngleDegrees call swap GetParent call Cast call GetOrientationDegrees call
-        +l rotatepoints drawsegments
+        +l rotatepoints drawpoly
         ;
         
 :persist outlinetoptext "Draw Outline all top text objects with the layer and width specified by drawparams."
         toptextobj
         copy GetTextBox call corners swap copy GetCenter call swap
-        GetTextAngleDegrees call rotatepoints drawsegments ;
+        GetTextAngleDegrees call rotatepoints drawpoly ;
         ;
 :persist texttosegments "Draw [TEXTOBJLIST LAYER] Copies text objects in TEXTOBJLIST to LAYER."
         swap copy GetThickness call list swap 
-        topoints pairwise 2 pick todrawsegments 
+        topoints pairwise 2 pick tosegments 
         copy 2 pick SetWidth callargs pop
         swap pop swap pop
         ;
@@ -52,8 +52,17 @@
         scale copy delist list angle delist 2 pick swap -f rotate
         pop pop
         ;
+        
 :persist range "Programming [START,STOP,INC] Returns a list of numbers" builtins 'range sindex list stack swap int list fcallargs delist ;
 :persist len "Conversion [LIST] return the length of the list" ilist list list builtins 'len sindex list swap stack fcallargs sum stack ;
 :persist newboard "Elements Create a new empty board and make it the current board." pcbnew list BOARD call delist Board spush ;
 :persist newadd "Elements [TYPE PARENT] Add a new element of TYPE to PARENT. Returns the new module." list copy pcbnew list swap list 3 pick callargs 1 pick 1 pick list Add callargs pop swap pop swap pop delist ;
+:persist drawsegments "Draw [POINTSLIST] Alias for drawpoly." drawpoly ;
 
+:persist true "Programming Returns the value True." 1 bool ;
+:persist false "Programming Returns the value False."' bool ;
+
+:persist regexref "Filter,Comparison [MODULELIST REGULAREXPRESSION] return only those modules in MODULELIST whose reference are matched by the REGULAREXPRESSION" swap copy GetReference call 2 pick regex isnotnone filter swap pop ;
+:persist refobj "Elements [MODULELIST] Return the reference objects of the modules" Reference call ;
+:persist setvisible "Elements [OBJECTLIST] Set the objects to visible." true SetVisible callargs pop ;
+:persist clearvisible "Elements [OBJECTLIST] Set the objects to invisible." false SetVisible callargs pop ;

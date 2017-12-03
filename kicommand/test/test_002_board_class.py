@@ -77,7 +77,7 @@ class TestBoardClass(unittest.TestCase):
         kc(':persist newboard "Elements Create a new empty board and make it the current board." pcbnew list BOARD call delist Board spush ;')
         pcb = kc('clear newboard board')
         track = kc('clear 0.5 mm t param F.Cu l param 10,10,20,30 mm '
-                        'drawsegments delist delist')
+                        'drawpoly delist delist')
         wval, hval = kc('list GetClearance call '
                         'copy append copy 30,-10,0.5 mm append sum swap '
                         '20,-10,0.5 mm append sum',returnval=-1)
@@ -85,7 +85,7 @@ class TestBoardClass(unittest.TestCase):
         #             float is because integer doesn't compare to float in assertAlmostEqual----+
         #             ilist is to create a list from the wxRect---------------------------+     |         
         #             copy is to keep bb reference in memory----------v                   v     v
-        height, width = kc('board list ComputeBoundingBox call copy GetSize call delist ilist float')
+        height, width = kc('board list ComputeBoundingBox call GetSize call delist ilist float')
         
         #height, width = bounding_box.GetSize()
         self.assertAlmostEqual(ToMM(height), ToMM(hval), 2)
@@ -104,9 +104,9 @@ class TestBoardClass(unittest.TestCase):
         # track.SetWidth(FromMM(0.5))
 
         #!!! THIS FAILS? == 0.0 x 0.0 ??
-        #height, width = ToMM(pcb.ComputeBoundingBox().GetSize())
-        bounding_box = pcb.ComputeBoundingBox()
-        height, width = ToMM(bounding_box.GetSize())
+        height, width = ToMM(pcb.ComputeBoundingBox().GetSize())
+        # bounding_box = pcb.ComputeBoundingBox()
+        # height, width = ToMM(bounding_box.GetSize())
 
         clearance = ToMM(track.GetClearance()*2)
         self.assertAlmostEqual(width,  (30-10) + 0.5 + clearance, 2)
@@ -125,7 +125,10 @@ class TestBoardClass(unittest.TestCase):
         #kc('list list Add callargs pop pop')
         #module.Add(pad)
 # newboard board MODULE swap newadd delist D_PAD swap newadd delist
-        pad.SetShape(PAD_OVAL)
+        try:
+            pad.SetShape(PAD_SHAPE_OVAL) # 5.x nightly
+        except:
+            pad.SetShape(PAD_OVAL) # 4.0.7
         pad.SetSize(wxSizeMM(2.0, 3.0))
         pad.SetPosition(wxPointMM(0,0))
         
