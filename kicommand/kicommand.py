@@ -1,3 +1,4 @@
+from __future__ import print_function
 import collections
 from collections import defaultdict, Counter
 from itertools import compress,izip, cycle
@@ -5,6 +6,9 @@ import itertools
 import pcbnew
 import time
 import os, sys
+#reload(sys)
+#sys.setdefaultencoding('UTF8')
+import traceback
 import math
 import re
 from textwrap import wrap
@@ -273,127 +277,132 @@ def run(commandstring,returnval=0):
 # and enters the entire item on the stack as a string (without the quotes)
 # Commands beginning with ? are conditional. The top of the stack is popped,
 # and if it was True, then the command is executed.
-
-    global stack
-    global _compile_mode
-    global _command_definition
-    global _user_dictionary
-    global _dictionary
-    #output( _command_dictionary.keys())
-    #output( str(stack))
-    
-    #print type(commandstring)
-    commandlines = commandstring.splitlines()
-    commands = []
-    for commandstring in commandlines:
-        #print 'processing {%s}'%commandstring
-        #commands = []
-        qend = 0
-        while True:
-            qindex = commandstring.find('"',qend)
-            if qindex == -1:
-                break;
-            # wx.MessageDialog(None,'PRE '+commandstring[qend:qindex-1]).ShowModal()
-            commands.extend(commandstring[qend:qindex].split())
-            qend = commandstring.find('"',qindex+1)
-            if qend == -1:
-                raise SyntaxError('A line must contain an even number of double quotes.')
-            commands.append(commandstring[qindex+1:qend])
-            # wx.MessageDialog(None,'Q {'+commandstring[qindex+1:qend]+'}').ShowModal()
-            qend += 1
-            
-        # wx.MessageDialog(None,'END {'+commandstring[qend:]+'}').ShowModal()
-        commands.extend(commandstring[qend:].split())
-    # wx.MessageDialog(None,'{'+'}{'.join(commands)+'}').ShowModal()
-    #print '{','}{'.join(commands),'}'
-    for command in commands:
-        
-        if command == ';':
-            _compile_mode = False
-            comm = _command_definition[:1]
-            if not comm: # delete all commands in the user dictionary: ': ;'
-                _user_dictionary = {}
-                continue
-            comm = comm[0]
-            cdef = _command_definition[1:]
-            if cdef:
-                # if the first term contains a space, then
-                # the category and helptext are taken from that parameter.
-                cat = ''
-                help = ''
-                firstspace = cdef[0].find(' ')
-                if firstspace != -1:
-                    cathelp = cdef.pop(0)
-                    cat = cathelp[:firstspace]
-                    help = cathelp[firstspace+1:]
-                    _dictionary[_newcommanddictionary][comm] = UserCommand(cdef,cat,help)
-                #output( "COMMAND %s DEFINITION %s\nCategory: {%s} Help: {%s}"%(comm,cdef,cat,help))
-                else:
-                    _dictionary[_newcommanddictionary][comm] = UserCommand(cdef,'','')
-                    #_dictionary[_newcommanddictionary][comm] = ' '.join(cdef)
-            else: # delete a command in the user dictionary: ': COMMAND ;'
-                del(_user_dictionary[_command_definition[0]])
-            _command_definition = []
-            continue
-
-        if _compile_mode:
-            _command_definition.append(command)
-            continue
-        
-        if command.startswith("'"):
-            stack.append(command[1:])
-            continue
-            
-        found = False
-        #output('Dictionaries')
-        for dictname in ('user','persist','command'):
-            #output(dictname,' : ',str(_dictionary[dictname]))
-            if command not in _dictionary[dictname]:
-                continue
-            commandToExecute = _dictionary[dictname][command]
-            if isinstance(commandToExecute,Command):
-                #output('%s is Command'%command)
-                numop = commandToExecute.numoperands
-                if len(stack) < numop:
-                    raise TypeError('%s expects %d arguments on the stack.'%(command,numop))
-                if numop:
-                    result = commandToExecute.execute(stack[-numop:])
-                    stack = stack[:-numop]
-                else:
-                    result = commandToExecute.execute([]) # TODO should this be [] ?
-                    
-                if result != None:
-                    stack.append(result)
-            elif isinstance(commandToExecute,UserCommand):
-                #output('%s is UserCommand'%command)
-                run(' '.join(commandToExecute.execute))
-            elif isinstance(commandToExecute,basestring):
-                #output('%s is commandstring'%command)
-                run(commandToExecute)
-            found = True
-            break
-        if not found:
-            stack.append(command)
-        
-        
-    if len(stack):
-        output( len(stack), 'operands left on the stack.' )
     try:
-        pcbnew.UpdateUserInterface()
-    except:
-        pass
-    #print 'User dictionary',_dictionary['user']
-    if returnval == 0:
-        if stack:
-            return stack[-1]
-        else:
-            return None
-    elif returnval == -1:
-        return stack
-    elif returnval > 0:
-        #returnval = -1 - returnval
-        return stack[-returnval:]
+        global stack
+        global _compile_mode
+        global _command_definition
+        global _user_dictionary
+        global _dictionary
+        #output( _command_dictionary.keys())
+        #output( str(stack))
+        
+        #print type(commandstring)
+        commandlines = commandstring.splitlines()
+        commands = []
+        for commandstring in commandlines:
+            #print 'processing {%s}'%commandstring
+            #commands = []
+            qend = 0
+            while True:
+                qindex = commandstring.find('"',qend)
+                if qindex == -1:
+                    break;
+                # wx.MessageDialog(None,'PRE '+commandstring[qend:qindex-1]).ShowModal()
+                commands.extend(commandstring[qend:qindex].split())
+                qend = commandstring.find('"',qindex+1)
+                if qend == -1:
+                    raise SyntaxError('A line must contain an even number of double quotes.')
+                commands.append(commandstring[qindex+1:qend])
+                # wx.MessageDialog(None,'Q {'+commandstring[qindex+1:qend]+'}').ShowModal()
+                qend += 1
+                
+            # wx.MessageDialog(None,'END {'+commandstring[qend:]+'}').ShowModal()
+            commands.extend(commandstring[qend:].split())
+        # wx.MessageDialog(None,'{'+'}{'.join(commands)+'}').ShowModal()
+        #print '{','}{'.join(commands),'}'
+        for command in commands:
+            
+            if command == ';':
+                _compile_mode = False
+                comm = _command_definition[:1]
+                if not comm: # delete all commands in the user dictionary: ': ;'
+                    _user_dictionary = {}
+                    continue
+                comm = comm[0]
+                cdef = _command_definition[1:]
+                if cdef:
+                    # if the first term contains a space, then
+                    # the category and helptext are taken from that parameter.
+                    cat = ''
+                    help = ''
+                    firstspace = cdef[0].find(' ')
+                    if firstspace != -1:
+                        cathelp = cdef.pop(0)
+                        cat = cathelp[:firstspace]
+                        help = cathelp[firstspace+1:]
+                        _dictionary[_newcommanddictionary][comm] = UserCommand(cdef,cat,help)
+                    #output( "COMMAND %s DEFINITION %s\nCategory: {%s} Help: {%s}"%(comm,cdef,cat,help))
+                    else:
+                        _dictionary[_newcommanddictionary][comm] = UserCommand(cdef,'','')
+                        #_dictionary[_newcommanddictionary][comm] = ' '.join(cdef)
+                else: # delete a command in the user dictionary: ': COMMAND ;'
+                    del(_user_dictionary[_command_definition[0]])
+                _command_definition = []
+                continue
 
+            if _compile_mode:
+                _command_definition.append(command)
+                continue
+            
+            if command.startswith("'"):
+                stack.append(command[1:])
+                continue
+                
+            found = False
+            #output('Dictionaries')
+            for dictname in ('user','persist','command'):
+                #output(dictname,' : ',str(_dictionary[dictname]))
+                if command not in _dictionary[dictname]:
+                    continue
+                commandToExecute = _dictionary[dictname][command]
+                if isinstance(commandToExecute,Command):
+                    #output('%s is Command'%command)
+                    numop = commandToExecute.numoperands
+                    if len(stack) < numop:
+                        raise TypeError('%s expects %d arguments on the stack.'%(command,numop))
+                    if numop:
+                        result = commandToExecute.execute(stack[-numop:])
+                        stack = stack[:-numop]
+                    else:
+                        result = commandToExecute.execute([]) # TODO should this be [] ?
+                        
+                    if result != None:
+                        stack.append(result)
+                elif isinstance(commandToExecute,UserCommand):
+                    #output('%s is UserCommand'%command)
+                    run(' '.join(commandToExecute.execute))
+                elif isinstance(commandToExecute,basestring):
+                    #output('%s is commandstring'%command)
+                    run(commandToExecute)
+                found = True
+                break
+            if not found:
+                stack.append(command)
+            
+            
+        if len(stack):
+            output( len(stack), 'operands left on the stack.' )
+        try:
+            pcbnew.UpdateUserInterface()
+        except:
+            pass
+        #print 'User dictionary',_dictionary['user']
+        if returnval == 0:
+            if stack:
+                return stack[-1]
+            else:
+                return None
+        elif returnval == -1:
+            return stack
+        elif returnval > 0:
+            #returnval = -1 - returnval
+            return stack[-returnval:]
+    except Exception as e:
+        # print(traceback.format_exc())
+        #e = sys.exc_info()[0]
+        #print "Error: %s" % e
+        raise
+        
 def retNone(function,*args):
     function(*args)
 
@@ -426,7 +435,7 @@ def output(*args):
     return
     # Here's the simple 'print' definition of output
     for arg in args:
-        print arg,
+        print(arg,end=' ')
     print
 
 def tosegments(*c):
@@ -1539,51 +1548,52 @@ def point_round128(w):
     #return w
     return w.__class__(int(w[0])&mask,int(w[1])&mask)
 
-    # TODO: maybe add layer, CPolyLine, and priority to drawparams
-def newzone(points, netname, layer, CPolyLine=pcbnew.CPolyLine.NO_HATCH, priority=0):
-    """NOT IMPLEMENTED"""
-    # CPolyLine values: NO_HATCH, DIAGONAL_FULL, DIAGONAL_EDGE
+
+    # # TODO: maybe add layer, CPolyLine, and priority to drawparams
+# def newzone(points, netname, layer, CPolyLine=pcbnew.CPolyLine.NO_HATCH, priority=0):
+    # """NOT IMPLEMENTED"""
+    # # CPolyLine values: NO_HATCH, DIAGONAL_FULL, DIAGONAL_EDGE
     
-    priority = int(priority)
+    # priority = int(priority)
 
-    if isinstance(CPolyLine,basestring):
-        CPolyLine = getattr(pcbnew.CPolyLine,CPolyLine)
+    # if isinstance(CPolyLine,basestring):
+        # CPolyLine = getattr(pcbnew.CPolyLine,CPolyLine)
         
-    try:
-        layer = int(layer)
-    except:
-        layer = board.GetLayerID(layer)
+    # try:
+        # layer = int(layer)
+    # except:
+        # layer = board.GetLayerID(layer)
 
 
-    nets = board.GetNetsByName()
+    # nets = board.GetNetsByName()
     
-    # for netname,layername in (("+5V", "B.Cu"), ("GND", "F.Cu")):
-    netinfo = nets.find(netname).value()[1]
-    #layer = layertable[layername]
-    newarea = board.InsertArea(netinfo.GetNet(), priority, layer, points[0][0], points[0][1], CPolyLine)
-    newoutline = newarea.Outline()
+    # # for netname,layername in (("+5V", "B.Cu"), ("GND", "F.Cu")):
+    # netinfo = nets.find(netname).value()[1]
+    # #layer = layertable[layername]
+    # newarea = board.InsertArea(netinfo.GetNet(), priority, layer, points[0][0], points[0][1], CPolyLine)
+    # newoutline = newarea.Outline()
 
-    # if you get a crash here, it's because you're on an older version of pcbnew.
-    # the data structs for polygons has changed a little. The old struct has a
-    # method called AppendCorner. Now it's just Append. Also, the call to CloseLastContour,
-    # commented below used to be needed to avoid a corrupt output file.
-    for p in range(1,len(points)):
-        newoutline.Append(points[p][0],points[p][1]);
+    # # if you get a crash here, it's because you're on an older version of pcbnew.
+    # # the data structs for polygons has changed a little. The old struct has a
+    # # method called AppendCorner. Now it's just Append. Also, the call to CloseLastContour,
+    # # commented below used to be needed to avoid a corrupt output file.
+    # for p in range(1,len(points)):
+        # newoutline.Append(points[p][0],points[p][1]);
         
-    # newoutline.Append(boardbbox.xl, boardbbox.yh);
-    # newoutline.Append(boardbbox.xh, boardbbox.yh);
-    # newoutline.Append(boardbbox.xh, boardbbox.yl);
-    # this next line shouldn't really be necessary but without it, saving to
-    # file will yield a file that won't load.
-    # newoutline.CloseLastContour()
+    # # newoutline.Append(boardbbox.xl, boardbbox.yh);
+    # # newoutline.Append(boardbbox.xh, boardbbox.yh);
+    # # newoutline.Append(boardbbox.xh, boardbbox.yl);
+    # # this next line shouldn't really be necessary but without it, saving to
+    # # file will yield a file that won't load.
+    # # newoutline.CloseLastContour()
 
-    # don't know why this is necessary. When calling InsertArea above, DIAGONAL_EDGE was passed
-    # If you save/restore, the zone will come back hatched.
-    # before then, the zone boundary will just be a line.
-    # Omit this if you are using pcbnew.CPolyLine.NO_HATCH
-    #pcbnew.CPolyLine. (DIAGONAL_EDGE, DIAGONAL_FULL, NO_HATCH)
-    if CPolyLine != pcbnew.CPolyLine.NO_HATCH:
-        newarea.Hatch()
+    # # don't know why this is necessary. When calling InsertArea above, DIAGONAL_EDGE was passed
+    # # If you save/restore, the zone will come back hatched.
+    # # before then, the zone boundary will just be a line.
+    # # Omit this if you are using pcbnew.CPolyLine.NO_HATCH
+    # #pcbnew.CPolyLine. (DIAGONAL_EDGE, DIAGONAL_FULL, NO_HATCH)
+    # if CPolyLine != pcbnew.CPolyLine.NO_HATCH:
+        # newarea.Hatch()
         
 def SETLENGTH(initlist, length):
     """NOT IMPLEMENTED"""
@@ -2116,7 +2126,7 @@ class commands:
         
         
         for item in arglist[0][0]:
-            print "item:",item
+            print ("item:",item)
             output(arglist[0][1].format(*item))
             
     def fprintf(self, *arglist):
@@ -2503,7 +2513,7 @@ def floatnoerror(value):
         return value
 def intnoerror(value):
     try:
-        return int(value)
+        return int(float(value)) # convert to float to catch the case where input is string float value
     except:
         return value
 def multiplynoerror(value,multiplier):
@@ -2592,17 +2602,23 @@ _command_dictionary.update({
     
     
     'pcbnew': Command(0,lambda c: pcbnew,'Elements',
-        'Get the base object for PCBNEW'),
+        'Get the python base object for PCBNEW'),
     'getboard': Command(0,lambda c: pcbnew.GetBoard(),'Elements',
-        'Get the Board object'),
+        'Get the loaded Board object'),
+    # boardpush can be done with "[BOARD Object] Board spush"
+    # boardpop can be done with "Board spop"
+    # 'boardpush': Command(1,lambda c: _user_stacks['Board'].append(c[0]),'Elements',
+        # '[BOARD] Add board to Board stack. This is the new default Board object for many commands'),
+    # 'boardpop': Command(0,lambda c: _user_stacks['Board'].pop(),'Elements',
+        # 'Remove last board from Board stack and place on the stack. The previous default board becomes the new default Board object for many commands'),
     'board': Command(0,lambda c: _user_stacks['Board'][-1],'Elements',
-        'Get the Board object'),
+        'Get the default Board object for many commands'),
     'modules': Command(0,lambda c: _user_stacks['Board'][-1].GetModules(),'Elements',
-        'Get all modules'),
+        'Get all modules of the default board'),
     'tracks': Command(0,lambda c: _user_stacks['Board'][-1].GetTracks(),'Elements',
-        'Get all tracks (including vias)'),
+        'Get all tracks (including vias) of the default board'),
     'drawings': Command(0,lambda c: _user_stacks['Board'][-1].GetDrawings(),'Elements',
-        'Get all top-level drawing objects (lines and text)'),
+        'Get all top-level drawing objects (lines and text) of the default board'),
 #    'toptext': Command(0,lambda c: filter(lambda x: isinstance(x,pcbnew.EDA_TEXT),_user_stacks['Board'][-1].GetDrawings()),'Elements'),
 # 'copy IsSelected call filter'
     # PCB Element Attributes
@@ -2770,8 +2786,18 @@ _command_dictionary.update({
         '[OPERAND1 OPERAND2] Return the the floating point OPERAND1 * OPERAND2.'),
     '/': Command(2,lambda c: float(c[0])/float(c[1]),'Numeric',
         '[OPERAND1 OPERAND2] Return the the floating point OPERAND1 / OPERAND2.'),
-    'sum': Command(1,lambda c: sum(*c),'Numeric',
-        '[LIST] Return the sum of all members in LIST.'),
+    'sum': Command(1, lambda c: sum(*c), 'Numeric', 
+        '[LIST] Return the sum of all members in LIST.'), 
+    
+    # 'sum': Command(1,
+       # lambda c: floatnoerror(c[0]) if isinstance(c[0],basestring) \
+       # and c[0].find(',') == -1 else sum(map(lambda x: floatnoerror(x),
+       # c[0].split(','))
+       # if isinstance(c[0],basestring) else sum(c[0])) 
+       # if hasattr(c[0],'__iter__') else floatnoerror(c[0]),
+
+    # 'Numeric',
+        # '[LIST] Return the sum of all members in LIST.'),
 
     # Stack Manipulation
     'append': Command(2,lambda c: c[0]+c[1],'Stack',
@@ -3033,7 +3059,7 @@ _user_stacks['drawparams'] = {
                                 'w':1*pcbnew.IU_PER_MM,
                                 'h':1*pcbnew.IU_PER_MM,
                                 'l':pcbnew.Dwgs_User, 
-                                'zt':pcbnew.CPolyLine.NO_HATCH,
+                                #'zt':pcbnew.CPolyLine.NO_HATCH,
                                 'zp':0
                              }
                              

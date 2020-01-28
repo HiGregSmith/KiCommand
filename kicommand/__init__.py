@@ -3,4 +3,4 @@ from .kicommand import *
 
 plugin = aplugin()
 plugin.register()
-plugin.Run()
+#plugin.Run()
