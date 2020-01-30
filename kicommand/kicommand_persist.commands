@@ -4,7 +4,7 @@
 :persist referencetextobj "Elements Get all module's Reference text objects." modules Reference call ;
 :persist moduletextobj "Elements Get all module's text objects that are not Value and not Reference." modules GraphicalItems calllist EDA_TEXT filtertype ;
 :persist drawparams "Draw [THICKNESS,WIDTH,HEIGHT LAYER] Set drawing parameters for future draw commands.\nExample: 1,5,5 mm F.Fab drawparams" 'l param t,w,h param ;
-:persist textfromobj "Elements [TEXTOBJECT] Get the text string from a text object." GetShownText call ;
+:persist textfromobj "Elements [TEXTOBJECT] Get the text string from a text object. valobj,refobj" GetShownText call ;
 :persist valuetext "Elements Get all module's Value text as a string." modules GetValue call ;
 :persist referencetext "Elements Get all module's Reference text as a string." modules GetReference call ;
 :persist not "Programming [VALUELIST] Invert the boolean value. False, 0, None becomes True and True, non-zero, non-empty list becomes False." ' = ;
@@ -27,9 +27,9 @@
         ;
 :persist outlinetext "Draw Outline all text objects with the layer and width specified by drawparams."
         valuetextobj
-        referencetextobj append 
-        moduletextobj append 
-        toptextobj append
+        referencetextobj concat 
+        moduletextobj concat 
+        toptextobj concat
         copy GetTextBox call corners swap copy GetCenter call swap 
         copy GetTextAngleDegrees call swap GetParent call Cast call GetOrientationDegrees call
         +l rotatepoints drawpoly
@@ -48,8 +48,8 @@
         ;
 :persist regularsize "Draw,Geometry [SIDELENGTH] [PARALLELANGLE] regularsize takes the selected segments, joins them into a regular polygon, then sizes the edges to the specified length, and places one of the edges parallel to the specified angle Example: 30 mm 0 regularsize"
         drawings selected copy connect copy
-        regular copy copy length delist stack 4 pick swap /f 
-        scale copy delist list angle delist 2 pick swap -f rotate
+        regular copy copy length delist stack 4 pick swap / 
+        scale copy delist list angle delist 2 pick swap - rotate
         pop pop
         ;
         
@@ -63,6 +63,7 @@
 :persist false "Programming Returns the value False."' bool ;
 
 :persist regexref "Filter,Comparison [MODULELIST REGULAREXPRESSION] return only those modules in MODULELIST whose reference are matched by the REGULAREXPRESSION" swap copy GetReference call 2 pick regex isnotnone filter swap pop ;
-:persist refobj "Elements [MODULELIST] Return the reference objects of the modules" Reference call ;
+:persist refobj "Elements [MODULELIST] Return the Reference objects of the modules. refobj,textfromobj" Reference call ;
+:persist valobj "Elements [MODULELIST] Return the Value objects of the modules. valobj,textfromobjobj" Value call ;
 :persist setvisible "Elements [OBJECTLIST] Set the objects to visible." true SetVisible callargs pop ;
 :persist clearvisible "Elements [OBJECTLIST] Set the objects to invisible." false SetVisible callargs pop ;

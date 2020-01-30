@@ -5,10 +5,10 @@ class TestQAWorks(unittest.TestCase):
     def setUp(self):
         self.pcb = None
 
-    def test_assert_true( self ):
+    def test_asserttrue( self ):
         self.assertTrue( True )
 
-    def test_assert_equal( self ):
+    def test_assertequal( self ):
         self.assertEqual(2, 1+1)
 
 

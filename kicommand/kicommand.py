@@ -1,7 +1,13 @@
 from __future__ import print_function
 import collections
 from collections import defaultdict, Counter
-from itertools import compress,izip, cycle
+from itertools import compress,cycle
+
+try:
+    zip
+except NameError:
+    from itertools import izip as zip
+	
 import itertools
 import pcbnew
 import time
@@ -13,9 +19,21 @@ import math
 import re
 from textwrap import wrap
 import wx
-from wxpointutil import wxPointUtil
-import kicommand_gui
 
+try:
+    from wxpointutil import wxPointUtil
+    import kicommand_gui
+except:
+    from .wxpointutil import wxPointUtil
+    from . import kicommand_gui
+
+# added for Python 3 compatibility, 
+# define basestring so all the "isinstance(x,basestring)" functions will work.
+try:
+    basestring
+except NameError:
+    basestring = str
+  
 _dictionary = {'user':{}, 'persist':{}, 'command':{}}
 # collections.OrderedDict
 _command_dictionary = _dictionary ['command']
@@ -235,9 +253,9 @@ class gui(kicommand_gui.kicommand_panel):
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             #print(exc_type, fname, exc_tb.tb_lineno)  
             output(str(e))
-            wx.MessageDialog(self.GetParent(),"Error 1 on line %s: %s"%
-               (exc_tb.tb_lineno,str(e))).ShowModal()
-
+            wx.MessageDialog(self.GetParent(),"Error 1 on line %s: %s\n%s"%
+               (exc_tb.tb_lineno, str(e), traceback.format_exc())).ShowModal()
+            
 class aplugin(pcbnew.ActionPlugin):
     """implements ActionPlugin"""
     g = None
@@ -246,10 +264,12 @@ class aplugin(pcbnew.ActionPlugin):
         self.category = "Command"
         self.description = "Select, modify and interrogate pcbnew objects with a simple command script."
     def Run(self):
-        parent =      \
-            filter(lambda w: w.GetTitle().startswith('Pcbnew'), 
-                   wx.GetTopLevelWindows()
-            )[0]
+        # parent =      \
+            # filter(lambda w: w.GetTitle().startswith('Pcbnew'), 
+                # wx.GetTopLevelWindows()
+            # )[0]
+        # better for Python3
+        parent = [x for x in wx.GetTopLevelWindows() if x.GetTitle().startswith('Pcbnew')][0]
         aplugin.g=gui(parent)
         pane = wx.aui.AuiPaneInfo()                       \
          .Caption( u"KiCommand" )                   \
@@ -286,11 +306,11 @@ def run(commandstring,returnval=0):
         #output( _command_dictionary.keys())
         #output( str(stack))
         
-        #print type(commandstring)
+        #print(type(commandstring))
         commandlines = commandstring.splitlines()
         commands = []
         for commandstring in commandlines:
-            #print 'processing {%s}'%commandstring
+            #print('processing {%s}'%commandstring)
             #commands = []
             qend = 0
             while True:
@@ -309,7 +329,7 @@ def run(commandstring,returnval=0):
             # wx.MessageDialog(None,'END {'+commandstring[qend:]+'}').ShowModal()
             commands.extend(commandstring[qend:].split())
         # wx.MessageDialog(None,'{'+'}{'.join(commands)+'}').ShowModal()
-        #print '{','}{'.join(commands),'}'
+        #print('{','}{'.join(commands),'}')
         for command in commands:
             
             if command == ';':
@@ -386,7 +406,7 @@ def run(commandstring,returnval=0):
             pcbnew.UpdateUserInterface()
         except:
             pass
-        #print 'User dictionary',_dictionary['user']
+        #print('User dictionary',_dictionary['user'])
         if returnval == 0:
             if stack:
                 return stack[-1]
@@ -400,7 +420,7 @@ def run(commandstring,returnval=0):
     except Exception as e:
         # print(traceback.format_exc())
         #e = sys.exc_info()[0]
-        #print "Error: %s" % e
+        #print("Error: %s" % e)
         raise
         
 def retNone(function,*args):
@@ -436,11 +456,11 @@ def output(*args):
     # Here's the simple 'print' definition of output
     for arg in args:
         print(arg,end=' ')
-    print
+    print()
 
 def tosegments(*c):
     tracklist,layer = c
-    #print 'tracklist: ',tracklist
+    #print('tracklist: ',tracklist)
     try:
         layerID = int(layer)
     except:
@@ -469,7 +489,7 @@ def tosegments(*c):
     return segments
         
 
-def draw_segmentlist(input,layer=pcbnew.Eco2_User,thickness=0.015*pcbnew.IU_PER_MM):
+def draw_segmentlist(input, layer=pcbnew.Eco2_User, thickness=0.015*pcbnew.IU_PER_MM):
     """Draws the vector (wxPoint_vector of polygon vertices) on the given
        layer and with the given thickness.
        close indicates whether the polygon needs to be closed
@@ -496,14 +516,14 @@ def draw_segmentlist(input,layer=pcbnew.Eco2_User,thickness=0.015*pcbnew.IU_PER_
 
     if isinstance(input,basestring):
         #input = [input.split(',')]
-        return drawlistofpolylines([input],layer,thickness)
+        return drawlistofpolylines([input], layer, thickness)
         
     if not hasattr(input,'__getitem__'):
         input = list(input)
 
     if isinstance(input[0],(float,int,pcbnew.wxPoint)):
         input = [input]
-        #print '478 triggered',input
+        #print('478 triggered',input)
         
     return drawlistofpolylines(input,layer,thickness)
     
@@ -530,7 +550,7 @@ def draw_segmentlist(input,layer=pcbnew.Eco2_User,thickness=0.015*pcbnew.IU_PER_
     if not hasattr(input[0],'__iter__') and not isinstance(input[0],pcbnew.wxPoint):
     #if isinstance(input[0],float):
         a = iter(input)
-        input = [izip(a, a)]
+        input = [zip(a, a)]
     
     if isinstance(input[0],pcbnew.wxPoint):
         input = [input]
@@ -553,7 +573,7 @@ def draw_segmentlist(input,layer=pcbnew.Eco2_User,thickness=0.015*pcbnew.IU_PER_
         #for segment in shape:
         if isinstance(shape[0],(float,int)):
             a = iter(shape)
-            shape = [pcbnew.wxPoint(int(x),int(y)) for x,y in izip(a, a)]
+            shape = [pcbnew.wxPoint(int(x),int(y)) for x,y in zip(a, a)]
         for i in range(len(shape)-1):
             segments.append(draw_segmentwx(
                 shape[i],
@@ -566,7 +586,7 @@ def draw_segmentlist(input,layer=pcbnew.Eco2_User,thickness=0.015*pcbnew.IU_PER_
     
     
 def drawlistofpolylines(input_lop,layer,thickness):
-    #print 'in polylines: ',input_lop
+    #print('in polylines: ',input_lop)
     allsegments = []
     segments = []
     for shape in input_lop:
@@ -579,12 +599,13 @@ def drawlistofpolylines(input_lop,layer,thickness):
         numbers = shape
         if isinstance(numbers,basestring):
             output('string2')
-            numbers = map(lambda x: float(x),shape.split(','))
-        
+            #numbers = map(lambda x: float(x),shape.split(','))
+            numbers = [float(x) for x in shape.split(',')]
+			
         if not hasattr(numbers[0],'__getitem__'):
-            #print 'zip triggered'
+            #print('zip triggered')
             a=iter(numbers)
-            numbers = [(intnoerror(x),intnoerror(y)) for x,y in izip(a, a)]
+            numbers = [(intnoerror(x),intnoerror(y)) for x,y in zip(a, a)]
         for i in range(len(numbers)-1):
             s = numbers[i]
             e = numbers[i+1]
@@ -743,7 +764,7 @@ def get_ds_ends(dseg):
             try:
                 return dseg[0],dseg[1]
             except:
-                #print type(dseg)
+                #print(type(dseg))
                 output ('error get get_ds_ends')
                 return
     if shape == pcbnew.S_SEGMENT:
@@ -1426,7 +1447,7 @@ def draw_segmentwx(startwxpoint,endwxpoint,layer=pcbnew.Dwgs_User,thickness=0.15
     else:
         ds=pcbnew.DRAWSEGMENT(board)
     board.Add(ds)
-    #print startwxpoint
+    #print(startwxpoint)
     ds.SetStart(startwxpoint)
     ds.SetEnd(endwxpoint)
     ds.SetLayer(layer)
@@ -1789,7 +1810,7 @@ def DRAWPARAMS(dims,layer):
 
 def list_to_paired_list(input):
     a = iter(input)
-    input = [pcbnew.wxPoint(int(x),int(y)) for x,y in izip(a, a)]
+    input = [pcbnew.wxPoint(int(x),int(y)) for x,y in zip(a, a)]
     return input
 
 def convert_to_points(input):
@@ -1908,9 +1929,9 @@ class commands:
     # Usage: clear toptextobj selected Dwgs.User texttosegments F.Cu tocopper
     def TOPOINTS(self,itemlist):
         """[EDA_TEXTLIST] a list of EDA_TEXT items, which are converted to point pairs suitable for TODRAWSEGMENTS"""
-        #print 'itemlist: ',itemlist
+        #print('itemlist: ',itemlist)
         # if not (hasattr(itemlist, '__getitem__') or hasattr(itemlist, '__iter__')):
-            # #print 'making into list'
+            # #print('making into list')
             # itemlist = [itemlist]
         strokes = []
         #for items in itemlist:
@@ -1928,7 +1949,7 @@ class commands:
                 orientation = t.GetDrawRotation()\
                              -t.GetTextAngle() 
                               
-                #print t.GetText(), orientation
+                #print(t.GetText(), orientation)
                 strokes[-1] = self.get_rotated_vector(strokes[-1],t.GetCenter(),orientation)
         return strokes
     TOPOINTS.nargs = 1
@@ -1937,10 +1958,10 @@ class commands:
     def pairwise(self,iterable):
         "s -> (s0, s1), (s2, s3), (s4, s5), ..."
         valuelist = []
-        #print 'iterable: ',iterable
+        #print('iterable: ',iterable)
         for item in iterable[0]:
             a = iter(item)
-            valuelist.append(list(izip(a, a)))
+            valuelist.append(list(zip(a, a)))
         return valuelist
     pairwise.nargs = 1
     pairwise.category = 'Conversion'
@@ -1969,7 +1990,7 @@ class commands:
         """[PATH_D_ATTRIBUTE SCALE] Converts SVG path element d attribute
             to a list of coordinates suitable for drawelements. Applies SCALE
             to all coordinates."""
-        #print path
+        #print(path)
         path = inputs[0]
         scale = inputs[1]
         tokens = ['']
@@ -1984,7 +2005,7 @@ class commands:
         position = [0.0,0.0]
         currenttoken = 0
         listresult = []
-        #print tokens
+        #print(tokens)
         scale = float(scale)
         while currenttoken < len(tokens):
             token = tokens[currenttoken]
@@ -2136,7 +2157,7 @@ class commands:
         filename = os.path.join(os.getcwd(),arglist[2])
         with open(filename,'w') as f: 
             for item in arglist[0]:
-                #print "item:",item
+                #print("item:",item)
                 f.write(arglist[1].format(*item))
         
     def pwd(self,empty):
@@ -2158,7 +2179,7 @@ class commands:
     def regex(self, *arglist):
         'Comparison [LIST REGEX] Create a LIST of True/False values corresponding to whether the values in LIST match the REGEX (for use prior to FILTER)'
         stringlist, regex_ = arglist[0]
-        #print stringlist, regex_
+        #print(stringlist, regex_)
     # Format of comment is: 'Category [ARGUMENT1 ARGUMENT2] Description'
         prog = re.compile(regex_)
         return map(lambda s: prog.match(s),stringlist)
@@ -2173,7 +2194,7 @@ class commands:
         'here. ARGLISTOFLISTS can also be a single list or a single value, '
         'in which case the value will be converted to a list of lists.'
         c = c[0]
-        #print c
+        #print(c)
         args = c[1]
         
         if hasattr(args,'__getitem__'):
@@ -2184,7 +2205,7 @@ class commands:
             
         return map(lambda x: 
             getattr(x[0],c[2])(*(x[1])), 
-            izip(c[0], cycle(args))
+            zip(c[0], cycle(args))
             )
 
 ################## END OF COMMANDS CLASS ###########################
@@ -2194,7 +2215,8 @@ class commands:
     #'help': Command(0,lambda c: HELPMAIN(),'Help', "Shows general help"),
     
 commands.classinstance = commands()
-for c in filter(lambda x: hasattr(getattr(commands,x), '__call__'),dir(commands)):
+# added for python3: "not x.startswith('__') and "
+for c in filter(lambda x: not x.startswith('__') and hasattr(getattr(commands,x), '__call__'),dir(commands)):
     f = getattr(commands.classinstance,c)
     if hasattr(f,'category'):
         _dictionary ['command'][c.lower()] = Command(f.nargs,f,f.category,f.__doc__)
@@ -2213,9 +2235,9 @@ for c in filter(lambda x: hasattr(getattr(commands,x), '__call__'),dir(commands)
             arg = doc[1:].split(']',1)[0].split()
             if arg:
                 nargs = len(arg)
-            # print c,':',arg
+            # print(c,':',arg)
         # else:
-            # print c,':',numarg
+            # print(c,':',numarg)
         _dictionary ['command'][c.lower()] = Command(nargs,f,category,doc)
 
 
@@ -2251,11 +2273,11 @@ def ROTATEPOINTS(points,center,angle):
     points = convert_to_points(points)
     if not hasattr(angle,'__iter__'):
         angle = [angle]
-    # for ps,c in izip(points, cycle(center)):
+    # for ps,c in zip(points, cycle(center)):
         # newp = [rotate_point(p,c,float(angle)) for p in ps ]
     newps = []
     # output( 'cpsa: ',center,points, angle)
-    for ps,c,a in izip(points, cycle(center),cycle(angle)):
+    for ps,c,a in zip(points, cycle(center),cycle(angle)):
         newps.append([rotate_point(p,c,float(a)) for p in ps])
 
     # output( 'c2:',center, points)
@@ -2365,7 +2387,7 @@ LOADABLE_DIR = os.path.join(KICOMMAND_MODULE_DIR,'loadable')
 USERLOADPATH = USERSAVEPATH+':'+LOADABLE_DIR
 PROJECTPATH = os.path.dirname(pcbnew.GetBoard().GetFileName())
 # for i in range(len(inspect.stack())):
-    # print i,inspect.stack()[i][1]
+    # print(i,inspect.stack()[i][1])
     
 def LOAD(name,path=USERLOADPATH):
     for p in path.split(':'):
@@ -2395,7 +2417,7 @@ def EXPLAIN(commandstring,category=None):
     while commands:
         count += 1
         if count > 100:
-            output('explain command has limit of 100 command output.')
+            output('explain command has an output limit of 100 commands.')
             break
         command = commands.pop()
         if not command:
@@ -2441,7 +2463,15 @@ def print_command_detail(command):
     # if isinstance(command,basestring):
         # return False
     output(('%s (Category: %s)'%(command,v.category)))
-    output(('\t%s'%'\n'.join(['\n\t'.join(wrap(block, width=60)) for block in v.helptext.splitlines()])))
+    helptext = v.helptext
+    seealso = v.helptext.split()[-1].split(',')
+    if len(seealso) > 1:
+        seealso = '\n\n\tSEE ALSO: {}'.format(', '.join(seealso))
+        helptext = helptext[0:helptext.rindex(' ')]
+    else:
+        seealso = ''
+    helptext += seealso
+    output(('\t%s'%'\n'.join(['\n\t'.join(wrap(block, width=60)) for block in helptext.splitlines()])))
     return True
 
 #def getcommand(command):
@@ -2480,7 +2510,7 @@ def HELPCAT(category):
     if commands:
         cbyc = defaultdict(list)
         for command in commands:
-            #print command[1]
+            #print(command[1])
             try:
                 catlist = command[1].category.split(',')
             except:
@@ -2638,7 +2668,7 @@ _command_dictionary.update({
     'index': Command(2,
                        lambda c: c[0][int(c[1])] if isinstance(c[1],basestring) \
                        and c[1].find(',') == -1 else map(lambda x: x[0][int(x[1])],
-                       izip(c[0], cycle(c[1].split(','))
+                       zip(c[0], cycle(c[1].split(','))
                        if isinstance(c[1],basestring) else c[1]
                        )),
                        
@@ -2671,8 +2701,8 @@ _command_dictionary.update({
     'matchreference': Command(2,lambda c: filter(lambda x: x.GetReference() in c[1].split(','), c[0]),'Filter',
         '[MODULES REFERENCE] Filter the MODULES and retain only those that match REFERENCE'),
     
-    'extend': Command(2,lambda c: c[0].extend(c[1]),'Stack',
-        '[LIST1 LIST2] Join LIST1 and LIST2'),
+    'extend': Command(2,lambda c: c[0].extend(c[1]) or c[0],'Stack',
+        '[LIST1 LIST2] Join LIST1 and LIST2. append,concat'),
         
     'filter': Command(2,lambda c: list(compress(c[0], c[1])),'Filter', # filter op1 by bool op2
         '[LIST1 TF_LIST] Retain objects in LIST1 where the corresponding value in TF_LIST is True, not None, not zero, and not zero length'),
@@ -2721,7 +2751,7 @@ _command_dictionary.update({
                 lambda c: 
                 map(lambda x: 
                         x[0](*(x[1])), 
-                        izip(c[0], cycle(c[1]))
+                        zip(c[0], cycle(c[1]))
                    )
                 ,'Call',
         '[FUNCTIONLIST ARGLISTOFLISTS] Execute each python function in the'
@@ -2748,12 +2778,12 @@ _command_dictionary.update({
                 # lambda c: 
                 # map(lambda x: 
                         # getattr(x[0],c[2])(*(x[1])), 
-                        # izip(c[0], cycle(c[1]))
+                        # zip(c[0], cycle(c[1]))
                    # )
                 # ,'Call',
                 # #        zip(c[0],c[1][0:len(c[0])])
-                # # itertools.izip(c[0], itertools.cycle(c[1]))
-                # #list(itertools.izip([1,2,3], itertools.cycle([4,5])))
+                # # itertools.zip(c[0], itertools.cycle(c[1]))
+                # #list(itertools.zip([1,2,3], itertools.cycle([4,5])))
         # '[OBJECTLIST ARGLISTOFLISTS FUNCTION] Execute python FUNCTION on each member '
         # 'of OBJECTLIST with arguments in ARGLISTOFLISTS. ARGLISTOFLISTS can be '
         # 'a different length than OBJECTLIST, in which case ARGLISTOFLISTS '
@@ -2772,10 +2802,10 @@ _command_dictionary.update({
     # # Outline the pads. Might be a problem with "bounding box" being orthogonal when pad is rotated.
     # r('clear pads copy GetBoundingBox call corners swap copy GetCenter call swap GetOrientationDegrees call rotatepoints drawpoly')
     '+.': Command(2,lambda c:
-            [float(a)+float(b) for a,b in izip(c[0], cycle(c[1]))],'Numeric',
+            [float(a)+float(b) for a,b in zip(c[0], cycle(c[1]))],'Numeric',
         '[LIST1 LIST2] Return the the floating point LIST1 + LIST2 member by member.'),
     '*.': Command(2,lambda c:
-            [float(a)*float(b) for a,b in izip(c[0], cycle(c[1]))],'Numeric',
+            [float(a)*float(b) for a,b in zip(c[0], cycle(c[1]))],'Numeric',
         '[LIST1 LIST2] Return the the floating point LIST1 * LIST2 member by member.'),
     '+': Command(2,lambda c:
             float(c[0])+float(c[1]),'Numeric',
@@ -2800,8 +2830,10 @@ _command_dictionary.update({
         # '[LIST] Return the sum of all members in LIST.'),
 
     # Stack Manipulation
-    'append': Command(2,lambda c: c[0]+c[1],'Stack',
-        '[OPERAND1 OPERAND2] Return LIST1 and LIST2 concatenated together.'),
+    'concat': Command(2,lambda c: c[0]+c[1],'Stack',
+        '[LIST1 LIST2] Return LIST1 and LIST2 concatenated together. append,extend'),
+    'append': Command(2,lambda c: c[0].append(c[1]) or c[0],'Stack',
+        '[LIST ITEM] Add ITEM to the end of LIST. If ITEM is a list, then it is added as a list. Use concat or extend for other options. extend,concat'),
     #'copytop': Command(0,lambda c: list(stack[-1])),
     # 'copytop': Command(0,lambda c: stack[-1],'Stack',
         # 'Duplicate the top object on the stack.'),
@@ -2910,10 +2942,10 @@ _command_dictionary.update({
         'Switches the two top objects on the stack.'),
     'zip2': Command(2,lambda c: zip(*c),'Stack',
         '[LIST1 LIST2] Creates a list with parallel objects in LIST1 and '
-        'LIST2 together at the same index.'),
+        'LIST2 together at the same index. ,zip'),
     'zip': Command(1,lambda c: zip(*c[0]),'Stack',
         '[LISTOFLISTS] Creates a list with parallel objects formed by each list '
-        'in LISTOFLISTS ((1,2,3)(4,5,6)(7,8,9)) -> ((1,4,7)(2,5,8)(3,6,9)).'
+        'in LISTOFLISTS ((1,2,3)(4,5,6)(7,8,9)) -> ((1,4,7)(2,5,8)(3,6,9)). ,zip2'
         ),
     ':': Command(0,lambda c: setcompilemode(True),'Programming',
         'Begin the definition of a new command. This is the only command in '
@@ -3059,7 +3091,7 @@ _user_stacks['drawparams'] = {
                                 'w':1*pcbnew.IU_PER_MM,
                                 'h':1*pcbnew.IU_PER_MM,
                                 'l':pcbnew.Dwgs_User, 
-                                #'zt':pcbnew.CPolyLine.NO_HATCH,
+                                'zt':pcbnew.ZONE_CONTAINER.NO_HATCH,
                                 'zp':0
                              }
                              
