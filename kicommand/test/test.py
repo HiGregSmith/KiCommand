@@ -50,7 +50,9 @@ class TestKiCommand(unittest.TestCase):
         untested = set(kicommand.kicommand._dictionary['command'].keys()) - set(testnames)
         
         # individually list tests that cannot be named python functions
-        untested = untested - set(('*','+','-','/','+.'))
+		# stack, print, and printf are not tested. They don't modify the stack at all, they only print to the output window.
+
+        untested = untested - set(('*','+','-','/','+.')) - set(('stack','print','printf'))
         untestedlist = list(untested)
         untestedlist.sort()
         print 'untested',untestedlist
