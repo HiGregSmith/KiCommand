@@ -22,6 +22,12 @@ class TestProgramming(unittest.TestCase):
     def test_builtins_sindex_fcallargs(self):
         self.assertEqual(kc('builtins pow sindex list 2,3 float list fcallargs'),[8.0])
 
+    def test_true_false_not(self):
+        self.assertEqual(kc('true'),True)
+        self.assertEqual(kc('list not'),[False])
+        self.assertEqual(kc('false'),False)
+        self.assertEqual(kc('list not'),[True])
+	
     def test_len(self):
         self.assertEqual(kc('1,2,3,4,5,6 int len'),6)
         self.assertEqual(kc('12345 len'),5)

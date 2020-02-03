@@ -7,7 +7,7 @@
 :persist textfromobj "Elements [TEXTOBJECT] Get the text string from a text object. valobj,refobj" GetShownText call ;
 :persist valuetext "Elements Get all module's Value text as a string." modules GetValue call ;
 :persist referencetext "Elements Get all module's Reference text as a string." modules GetReference call ;
-:persist not "Programming [VALUELIST] Invert the boolean value. False, 0, None becomes True and True, non-zero, non-empty list becomes False." ' = ;
+:persist not "Programming [VALUELIST] Invert the boolean value. False, 0, None becomes True and True, non-zero, non-empty list becomes False." false = ;
 :persist copy "Programming Copies the top of the stack." 0 pick ;
 :persist setselect "Elements [OBJECTLIST] Sets the objects as Selected." SetSelected call pop ;
 :persist clearselect "Elements [OBJECTLIST] Sets the objects as Unselected." ClearSelected call pop ;
