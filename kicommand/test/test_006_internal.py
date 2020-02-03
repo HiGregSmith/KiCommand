@@ -13,8 +13,8 @@ class TestInternal(unittest.TestCase):
         self.assertTrue(set(pcommands) <= set(kicommand.kicommand._dictionary['persist'].keys()))
         self.assertFalse(set(['thiscommand doesnt exist']) < set(kicommand.kicommand._dictionary['persist'].keys()))
 
-    def test_help_helpcat_explain_see_seeall(self):
-        result = kc("clear help All helpcat 'help explain seeall 'bool see",returnval=-1)
+    def test_help_helpcat_explain_see_seeall_helpall(self):
+        result = kc("clear help All helpcat 'help explain seeall 'bool see helpall",returnval=-1)
         self.assertEqual(result,[])
         
 

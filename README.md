@@ -4,6 +4,10 @@ KiCommand allows simple command strings to be executed within pcbnew.
 Command strings consist of a variety commands that retrieve, filter, and
 process Kicad objects. Commands are very easily added with a simple syntax.
 
+[Development and discussion thread](https://forum.kicad.info/t/7694) on KiCAD forums.
+
+[Tutorial and Wiki](https://forum.kicad.info/t/21008). The tutorial assumes no prior knowledge and will teach you step by step how to use KiCommand.
+
 Here are a few short examples:
 
 - **pads setselect**

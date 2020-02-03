@@ -30,9 +30,20 @@ def iterate_tests(test_suite_or_case):
         # sys.exit(1)
 
 
+
+def runtests():
+    global testsuite
+    testsuite = unittest.TestLoader().discover('kicommand.test',pattern="test_*.py")
+    suite = unittest.TestLoader().loadTestsFromTestCase(TestKiCommand)
+    unittest.TextTestRunner(verbosity=2).run(suite)
+
+    results = unittest.TextTestRunner(verbosity=100).run(testsuite)
+
+
 class TestKiCommand(unittest.TestCase):
         
     def test_coverage(self):
+        global testsuite
         prefix = 'test_'
         #fulltestnames = filter(lambda x: x.startswith(prefix),dir(self))
         testnames = [test._testMethodName.split('_') for test in iterate_tests(testsuite)]
@@ -52,7 +63,7 @@ class TestKiCommand(unittest.TestCase):
         # individually list tests that cannot be named python functions
 		# stack, print, and printf are not tested. They don't modify the stack at all, they only print to the output window.
 
-        untested = untested - set(('*','+','-','/','+.')) - set(('stack','print','printf'))
+        untested = untested - set(('*','+','-','/','+.','*.','index.')) - set(('stack','print','printf'))
         untestedlist = list(untested)
         untestedlist.sort()
         print 'untested',untestedlist
@@ -64,18 +75,13 @@ class TestKiCommand(unittest.TestCase):
 # The following lines enable testing from pcbnew Script Console
 # just "import kicommand.test" and view the output in the
 # Script Console window.
-testsuite = unittest.TestLoader().discover('kicommand.test',pattern="test_*.py")
-suite = unittest.TestLoader().loadTestsFromTestCase(TestKiCommand)
-unittest.TextTestRunner(verbosity=2).run(suite)
+runtests()
+# testsuite = unittest.TestLoader().discover('kicommand.test',pattern="test_*.py")
+# suite = unittest.TestLoader().loadTestsFromTestCase(TestKiCommand)
+# unittest.TextTestRunner(verbosity=2).run(suite)
 
-if True:#__name__ == '__main__':
-    results = unittest.TextTestRunner(verbosity=100).run(testsuite)
-    # for ts in testsuite._tests:
-        # print str(ts)
-        # for t in ts:
-            # print "\t",type(t)
-            # print "\t",dir(t)
-            # print "\t",str(t)
+# if True:#__name__ == '__main__':
+    # results = unittest.TextTestRunner(verbosity=100).run(testsuite)
 
 
 # from kicommand_test import test_001_pcb_kicad

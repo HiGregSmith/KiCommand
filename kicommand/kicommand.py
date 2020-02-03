@@ -1956,7 +1956,7 @@ class commands:
     TOPOINTS.category = 'Draw,Geometry'
     
     def pairwise(self,iterable):
-        "s -> (s0, s1), (s2, s3), (s4, s5), ..."
+        "[LISTOFLISTS] [s] -> [[s0, s1], [s2, s3], [s4, s5], ...]"
         valuelist = []
         #print('iterable: ',iterable)
         for item in iterable[0]:
@@ -2464,7 +2464,9 @@ def print_command_detail(command):
         # return False
     output(('%s (Category: %s)'%(command,v.category)))
     helptext = v.helptext
-    seealso = v.helptext.split()[-1].split(',')
+    seealso = ''
+    if helptext:
+        seealso = v.helptext.split()[-1].split(',')
     if len(seealso) > 1:
         seealso = '\n\n\tSEE ALSO: {}'.format(', '.join(seealso))
         helptext = helptext[0:helptext.rindex(' ')]
@@ -2539,6 +2541,11 @@ def HELPCAT(category):
 def floatnoerror(value):
     try:
         return float(value)
+    except:
+        return value
+def roundnoerror(value,n=0):
+    try:
+        return round(float(value),n) # convert to float to catch the case where input is string float value
     except:
         return value
 def intnoerror(value):
@@ -2711,7 +2718,7 @@ _command_dictionary.update({
         '[LIST VALUE] Create a LIST of True/False values corresponding to whether the values in LIST are less than VALUE (for use prior to FILTER)'),
     'filtertype': Command(2,lambda c: filter(lambda x:isinstance(x,getattr(pcbnew,c[1])),c[0]),'Comparison',
         '[LIST TYPE] Retains objects in LIST that are of TYPE' ),
-    'istype': Command(2,lambda c: filter(lambda x:isinstance(x,getattr(pcbnew,c[1])),c[0]),'Comparison',
+    'istype': Command(2,lambda c: map(lambda x:isinstance(x,getattr(pcbnew,c[1])),c[0]),'Comparison',
         '[LIST TYPE] Create a LIST of True/False values corresponding to whether '
         'the values in LIST are of TYPE (for use prior to FILTER). '
         'TYPE must be an attribute of pcbnew.' ),
@@ -2809,9 +2816,21 @@ _command_dictionary.update({
     '*.': Command(2,lambda c:
             [float(a)*float(b) for a,b in zip(c[0], cycle(c[1]))],'Numeric',
         '[LIST1 LIST2] Return the the floating point LIST1 * LIST2 member by member.'),
+		
     '+': Command(2,lambda c:
             float(c[0])+float(c[1]),'Numeric',
         '[OPERAND1 OPERAND2] Return the the floating point OPERAND1 + OPERAND2.'),
+		# floatnoerror(c[0]) if str and not ','
+    # 'a': Command(2,
+                       # lambda c: floatnoerror(c[0]) if isinstance(c[0],basestring) \
+                       # and c[0].find(',') == -1 else map(lambda x: floatnoerror(x),
+                       # c[0].split(',')
+                       # if isinstance(c[0],basestring) else c[0]
+                       # if hasattr(c[0],'__iter__') else [c[0]]),
+                       # 'Conversion',
+        # '[OBJECT] Return OBJECT as a floating point value or list. OBJECT can '
+        # 'be a string, a comma separated list of values, a list of strings, or '
+        # 'list of numbers.', ),
     '-': Command(2,lambda c: float(c[0])-float(c[1]),'Numeric',
         '[OPERAND1 OPERAND2] Return the the floating point OPERAND1 - OPERAND2.'),
     '*': Command(2,lambda c: float(c[0])*float(c[1]),'Numeric',
@@ -2858,6 +2877,26 @@ _command_dictionary.update({
                        if hasattr(c[0],'__iter__') else [c[0]]),
                        'Conversion',
         '[OBJECT] Return OBJECT as a floating point value or list. OBJECT can '
+        'be a string, a comma separated list of values, a list of strings, or '
+        'list of numbers.', ),
+    'roundint': Command(1,
+                       lambda c: roundnoerror(c[0]) if isinstance(c[0],basestring) \
+                       and c[0].find(',') == -1 else map(lambda x: roundnoerror(x),
+                       c[0].split(',')
+                       if isinstance(c[0],basestring) else c[0]
+                       if hasattr(c[0],'__iter__') else [c[0]]),
+                       'Conversion',
+        '[OBJECT] Return OBJECT as a rounded floating point value or list. OBJECT can '
+        'be a string, a comma separated list of values, a list of strings, or '
+        'list of numbers.', ),
+    'roundn': Command(2,
+                       lambda c: roundnoerror(c[0],n=int(c[1])) if isinstance(c[0],basestring) \
+                       and c[0].find(',') == -1 else map(lambda x: roundnoerror(x,n=int(c[1])),
+                       c[0].split(',')
+                       if isinstance(c[0],basestring) else c[0]
+                       if hasattr(c[0],'__iter__') else [c[0]]),
+                       'Conversion',
+        '[OBJECT] Return OBJECT as a rounded floating point value or list. OBJECT can '
         'be a string, a comma separated list of values, a list of strings, or '
         'list of numbers.', ),
     'bool': Command(1,

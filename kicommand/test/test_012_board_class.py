@@ -89,9 +89,9 @@ class TestBoardClass(unittest.TestCase):
                         'copy concat copy 30,-10,0.5 mm concat sum swap '
                         '20,-10,0.5 mm concat sum',returnval=-1)
                         
-        #             float is because integer doesn't compare to float in assertAlmostEqual----+
-        #             ilist is to create a list from the wxRect---------------------------+     |         
-        #             copy is to keep bb reference in memory----------v                   v     v
+        #       float is because integer doesn't compare to float in assertAlmostEqual----+
+        #       ilist is to create a list from the wxRect---------------------------+     |         
+        #                                                                           v     v
         height, width = kc('board list ComputeBoundingBox call GetSize call delist ilist float')
         
         #height, width = bounding_box.GetSize()
@@ -116,7 +116,7 @@ class TestBoardClass(unittest.TestCase):
         # height, width = ToMM(bounding_box.GetSize())
 
         clearance = ToMM(track.GetClearance()*2)
-        # 5.3.3 note: Size, like Bounding Box, no longer includes clearance value
+        # 5.1.5 note: Size, like Bounding Box, no longer includes clearance value
         clearance = 0
         self.assertAlmostEqual(width,  (30-10) + 0.5 + clearance, 2)
         self.assertAlmostEqual(height, (20-10) + 0.5 + clearance, 2)

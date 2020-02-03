@@ -52,7 +52,7 @@
         scale copy delist list angle delist 2 pick swap - rotate
         pop pop
         ;
-        
+:persist setcurrentboard "Elements Sets the currently loaded in the pcbnew window as the default board and prints its filename." getboard copy Board spush list GetFileName call delist print pop ;        
 :persist range "Programming [START,STOP,INC] Returns a list of numbers" builtins 'range sindex list stack swap int list fcallargs delist ;
 :persist len "Conversion [LIST] return the length of the list" ilist list list builtins 'len sindex list swap stack fcallargs sum stack ;
 :persist newboard "Elements Create a new empty board and make it the current board." pcbnew list BOARD call delist Board spush ;
