@@ -2970,6 +2970,9 @@ _command_dictionary.update({
         '[OBJECT] Make OBJECT into a list (with only OBJECT in it).'),
     'delist': Command(1,lambda c: c[0][0],'Conversion',
         '[LIST] Output index 0 of LIST.'),
+    'flatlist': Command(1,lambda c: [item for sublist in c[0] for item in sublist],'Conversion',
+        '[LISTOFLISTS] Flatten the list of lists into a single-dimension list.'),
+
 
     #'swap': Command(2,retNone(lambda c: stack[-1],stack[-2]=stack[-2],stack[-1])),
     # 'pick': Command(1,lambda c: stack.insert(-int(stack[-1])-1,stack[-2]),'Stack',
