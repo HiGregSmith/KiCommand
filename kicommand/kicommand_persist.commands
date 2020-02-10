@@ -66,3 +66,7 @@
 :persist valobj "Elements [MODULELIST] Return the Value objects of the modules. valobj,textfromobjobj" Value call ;
 :persist setvisible "Elements [OBJECTLIST] Set the objects to visible." true SetVisible callargs pop ;
 :persist clearvisible "Elements [OBJECTLIST] Set the objects to invisible." false SetVisible callargs pop ;
+:persist getnetcodefromname "Elements [NAMELISTOFLISTS] get netcodes from netnames i.e. GND list list. setnetcode,setnetname,getallnetnames" getboard list swap GetNetcodeFromNetname callargs ;
+:persist setnetcode "Elements [TRACKLIST NETCODELIST] set netcodes of tracks. getnetcodefromname,setnetname,getallnetnames" SetNetCode callargs ;
+:persist setnetname "Elements [TRACKLIST NAMELISTOFLISTS] set netnames of tracks. getnetcodefromname,setnetcode,getallnetnames" getnetcodefromname setnetcode ;
+:persist getallnetnames "Elements Get a list of all the net names on the current board. getnetcodefromname,setnetcode,setnetname" getboard list GetNetsByName call delist ilist ;
