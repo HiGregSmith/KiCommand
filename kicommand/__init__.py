@@ -1,6 +1,4 @@
 #from .kicommand import aplugin
-from .kicommand import *
+from .kicommand import KiCommandAction
 
-plugin = aplugin()
-plugin.register()
-plugin.Run()
+KiCommandAction.getInstance().register()

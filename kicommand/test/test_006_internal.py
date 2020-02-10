@@ -1,7 +1,7 @@
 import unittest
 import pcbnew
 import kicommand
-from kicommand import run as kc
+from kicommand.kicommand import kc
 
 class TestInternal(unittest.TestCase):
 

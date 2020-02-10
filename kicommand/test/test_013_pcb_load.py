@@ -2,7 +2,7 @@ import os
 import code
 import unittest
 import pdb
-from kicommand import run as kc
+from kicommand.kicommand import kc
 
 KICAD_INSTALL = r'C:\Program Files\KiCad'
 

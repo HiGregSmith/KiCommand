@@ -1,13 +1,16 @@
+
+# In python2, Use print function with parenthesis
 from __future__ import print_function
 import collections
 from collections import defaultdict, Counter
 from itertools import compress,cycle
 
+# handle python3 or python2. In python2, import izip as zip
 try:
-    zip
+    zip 
 except NameError:
     from itertools import izip as zip
-	
+
 import itertools
 import pcbnew
 import time
@@ -38,6 +41,12 @@ _dictionary = {'user':{}, 'persist':{}, 'command':{}}
 # collections.OrderedDict
 _command_dictionary = _dictionary ['command']
 stack = []
+
+def getPcbnewWindow():
+    try:
+        return [x for x in wx.GetTopLevelWindows() if x.GetTitle().startswith('Pcbnew')][0]
+    except:
+       return None
 
 #
 
@@ -108,8 +117,8 @@ stack = []
 #
 
 # r('clear : valuetext modules Value call ; : referencetext modules Reference call ; : moduletext modules GraphicalItems calllist EDA_TEXT filtertype ;')
-# r('clear moduletext valuetext append referencetext append toptext append copy GetTextBox call corners swap copy GetCenter call swap GetTextAngle call rotatepoints drawpoly')
-# copy copy Value call swap Reference call append swap GraphicalItems calllist append toptext append         copy GetTextBox call corners swap copy GetCenter call swap GetTextAngleDegrees call rotatepoints drawpoly
+# r('clear moduletext valuetext append referencetext append toptext append copy GetTextBox call corners swap copy GetCenter call swap GetTextAngle call rotatepoints drawsegments')
+# copy copy Value call swap Reference call append swap GraphicalItems calllist append toptext append         copy GetTextBox call corners swap copy GetCenter call swap GetTextAngleDegrees call rotatepoints drawsegments
 
         # This allows simple command strings to be executed within pcbnew
         # The command string is in postfix format, and the current commands are:
@@ -127,7 +136,7 @@ stack = []
         # matchreference - Filter list of modules for matching a reference.
         # getpads        - Get all pads on the list of modules.
 
-        # command_stack.run(command_string)
+        # command_stack.kc(command_string)
         #
         # Sample command_string:
         #
@@ -175,7 +184,7 @@ stack = []
         # self.category = "Command"
         # self.description = "Execute a postfix command stack."
     # def Run(self):
-        # run()
+        # kc()
         
 
         #http://interactivepython.org/runestone/static/pythonds/BasicDS/InfixPrefixandPostfixExpressions.html
@@ -238,7 +247,7 @@ class gui(kicommand_gui.kicommand_panel):
     def process(self,e):
         try:
             commandstring = self.entrybox.GetValue()
-            run(commandstring)
+            kc(commandstring)
             self.entrybox.Clear()
             self.outputbox.ShowPosition(self.outputbox.GetLastPosition())
             if commandstring != '':
@@ -255,42 +264,8 @@ class gui(kicommand_gui.kicommand_panel):
             output(str(e))
             wx.MessageDialog(self.GetParent(),"Error 1 on line %s: %s\n%s"%
                (exc_tb.tb_lineno, str(e), traceback.format_exc())).ShowModal()
-            
-class aplugin(pcbnew.ActionPlugin):
-    """implements ActionPlugin"""
-    g = None
-    def defaults(self):
-        self.name = "KiCommand"
-        self.category = "Command"
-        self.description = "Select, modify and interrogate pcbnew objects with a simple command script."
-    def Run(self):
-        # parent =      \
-            # filter(lambda w: w.GetTitle().startswith('Pcbnew'), 
-                # wx.GetTopLevelWindows()
-            # )[0]
-        # better for Python3
-        parent = [x for x in wx.GetTopLevelWindows() if x.GetTitle().startswith('Pcbnew')][0]
-        aplugin.g=gui(parent)
-        pane = wx.aui.AuiPaneInfo()                       \
-         .Caption( u"KiCommand" )                   \
-         .Center()                                \
-         .Float()                                 \
-         .FloatingPosition( wx.Point( 346,268 ) ) \
-         .Resizable()                             \
-         .FloatingSize( wx.Size( int(610),int(652) ) )       \
-         .Layer( 0 )                                 
 
-        manager = wx.aui.AuiManager.GetManager(parent)
-        manager.AddPane( self.__class__.g, pane )
-        manager.Update()
-        loadname = os.path.join(os.path.dirname(__file__),'kicommand_persist.commands')
-        #print ('Loading from %s'%os.path.normpath(loadname))
-        LOAD('kicommand_persist.commands',path=os.path.dirname(__file__))
-
-        run('help')
-
-
-def run(commandstring,returnval=0):
+def kc(commandstring,returnval=0):
     """returnval -1 return entire stack, 0 return top, >0 return that number of elements from top of list as a list."""
 # Items beginning with single quote are entered onto the stack as a string (without the quote)
 # Items beginning with double quote swallow up elements until a word ends in a double quote,
@@ -306,6 +281,10 @@ def run(commandstring,returnval=0):
         #output( _command_dictionary.keys())
         #output( str(stack))
         
+        # if not aplugin:
+            # KiCommandAction().register()
+        # if not aplugin:
+            # print("Error registering plugin with PCBNEW")
         #print(type(commandstring))
         commandlines = commandstring.splitlines()
         commands = []
@@ -390,10 +369,10 @@ def run(commandstring,returnval=0):
                         stack.append(result)
                 elif isinstance(commandToExecute,UserCommand):
                     #output('%s is UserCommand'%command)
-                    run(' '.join(commandToExecute.execute))
+                    kc(' '.join(commandToExecute.execute))
                 elif isinstance(commandToExecute,basestring):
                     #output('%s is commandstring'%command)
-                    run(commandToExecute)
+                    kc(commandToExecute)
                 found = True
                 break
             if not found:
@@ -422,12 +401,84 @@ def run(commandstring,returnval=0):
         #e = sys.exc_info()[0]
         #print("Error: %s" % e)
         raise
+            
+class KiCommandAction(pcbnew.ActionPlugin):
+    """implements ActionPlugin"""
+    # global aplugin
+    __window = None
+    __instance = None
+    @classmethod
+    def getInstance(selfclass):
+       if selfclass.__instance == None:
+           selfclass()
+       return selfclass.__instance
+        
+    @classmethod
+    def getWindow(selfclass):
+       if selfclass.__instance == None:
+           selfclass()
+       #print ('Dead: ',isinstance(selfclass.__window,wx._core._wxPyDeadObject))
+       if selfclass.__window == None or isinstance(selfclass.__window,wx._core._wxPyDeadObject):
+           selfclass.getInstance().Run()           
+           
+       return selfclass.__window
+        
+    def __init__(self):
+        self.defaults()
+        if self.__class__.__instance != None:
+            raise Exception("Use getInstance() to get the singleton instance.")
+        else:
+            self.__class__.__instance = self
+    def defaults(self):
+        self.name = "KiCommand"
+        self.category = "Command"
+        self.description = "Select, modify and interrogate pcbnew objects with a simple command script."
+        self.show_toolbar_button = False # Optional, defaults to False
+        self.icon_file_name = "" # os.path.join(os.path.dirname(__file__), 'simple_plugin.png') # Optional, defaults to ""
+
+    def Run(self):
+        try:
+            parent = [x for x in wx.GetTopLevelWindows() if x.GetTitle().startswith('Pcbnew')][0]
+        except:
+            # top level windows not set up yet
+            return
+        # global aplugin
+        # if aplugin:
+            # return
+        # else:
+            # aplugin = self
+        # parent =      \
+            # filter(lambda w: w.GetTitle().startswith('Pcbnew'), 
+                # wx.GetTopLevelWindows()
+            # )[0]
+        # better for Python3
+        self.__class__.__window=gui(parent)
+        pane = wx.aui.AuiPaneInfo()                       \
+         .Caption( u"KiCommand" )                   \
+         .Center()                                \
+         .Float()                                 \
+         .FloatingPosition( wx.Point( 346,268 ) ) \
+         .Resizable()                             \
+         .FloatingSize( wx.Size( int(1220),int(652) ) )       \
+         .Layer( 0 )                                 
+
+        manager = wx.aui.AuiManager.GetManager(parent)
+        manager.AddPane( self.__class__.getWindow(), pane )
+        manager.Update()
+        loadname = os.path.join(os.path.dirname(__file__),'kicommand_persist.commands')
+        #print ('Loading from %s'%os.path.normpath(loadname))
+        LOAD('kicommand_persist.commands',path=os.path.dirname(__file__))
+
+        kc('help')
+
+KiCommandAction().register()
+
         
 def retNone(function,*args):
     function(*args)
 
 def UNDOCK():
-    wx.aui.AuiManager.GetManager(aplugin.g).GetPane(aplugin.g).Float()
+    wx.aui.AuiManager.GetManager(KiCommandAction.getWindow()).GetPane(KiCommandAction.getWindow()).Float()
     # wx.aplugin.g.Float() #mgr.GetPane(text1).Float()
     # self.mgr.GetPane(text1).Float()
     # wx.aui.AuiManager.GetPane(wx.aplugin.g, item)
@@ -450,8 +501,8 @@ def SWAP():
 def output(*args):
 
     for arg in args:
-        aplugin.g.outputbox.AppendText(str(arg)+' ')
-    aplugin.g.outputbox.AppendText('\n')
+        KiCommandAction.getWindow().outputbox.AppendText(str(arg)+' ')
+    KiCommandAction.getWindow().outputbox.AppendText('\n')
     return
     # Here's the simple 'print' definition of output
     for arg in args:
@@ -464,7 +515,7 @@ def tosegments(*c):
     try:
         layerID = int(layer)
     except:
-        layerID = _user_stacks['Board'][-1].GetLayerID(str(layer))
+        layerID = getBoard().GetLayerID(str(layer))
         
     segments = []
     for tlist in tracklist:
@@ -512,7 +563,7 @@ def draw_segmentlist(input, layer=pcbnew.Eco2_User, thickness=0.015*pcbnew.IU_PE
     try:
         layer = int(layer)
     except:
-        layer = _user_stacks['Board'][-1].GetLayerID(str(layer))
+        layer = getBoard().GetLayerID(str(layer))
 
     if isinstance(input,basestring):
         #input = [input.split(',')]
@@ -598,10 +649,10 @@ def drawlistofpolylines(input_lop,layer,thickness):
         #    in which case each list value is an x/y pair.
         numbers = shape
         if isinstance(numbers,basestring):
-            output('string2')
+            #output('string2')
             #numbers = map(lambda x: float(x),shape.split(','))
             numbers = [float(x) for x in shape.split(',')]
-			
+
         if not hasattr(numbers[0],'__getitem__'):
             #print('zip triggered')
             a=iter(numbers)
@@ -619,18 +670,18 @@ def drawlistofpolylines(input_lop,layer,thickness):
             segments.append(draw_segmentwx(s,e,layer=layer,thickness=thickness))
 # test commands:
 # Test single list of numbers:
-# 0,0,1,1 mm drawpoly
+# 0,0,1,1 mm drawsegments
 # Test single list of list of numbers:
-# 0,0,1,1 mm list drawpoly
+# 0,0,1,1 mm list drawsegments
 # Test single list of numbers:
-# 0,0,1,1,2,2,3,3 mm list drawpoly
+# 0,0,1,1,2,2,3,3 mm list drawsegments
 # Test two lists of numbers:
-# 0,0,1,1 mm list 2,2,3,3 mm list append drawpoly
-# 0,0,1000000,1000000 ,2000000,2000000,3000000,3000000 append drawpoly
-# 0,0,1000000,1000000,2000000,2000000,3000000,3000000 drawpoly
-# 0,0,1000000,1000000 list 2000000,2000000,3000000,3000000 list append drawpoly
-# 0,0 mm wxpoint 1,1 mm wxpoint append 2,2 mm wxpoint append 3,3 mm wxpoint append drawpoly
-# 0,0 mm wxpoint 1,1 mm wxpoint append list 2,2 mm wxpoint 3,3 mm wxpoint append list append drawpoly
+# 0,0,1,1 mm list 2,2,3,3 mm list append drawsegments
+# 0,0,1000000,1000000 ,2000000,2000000,3000000,3000000 append drawsegments
+# 0,0,1000000,1000000,2000000,2000000,3000000,3000000 drawsegments
+# 0,0,1000000,1000000 list 2000000,2000000,3000000,3000000 list append drawsegments
+# 0,0 mm wxpoint 1,1 mm wxpoint append 2,2 mm wxpoint append 3,3 mm wxpoint append drawsegments
+# 0,0 mm wxpoint 1,1 mm wxpoint append list 2,2 mm wxpoint 3,3 mm wxpoint append list append drawsegments
         allsegments.append(segments)
         segments = []
     return allsegments
@@ -1403,7 +1454,7 @@ def draw_arc_to_lines(radius,pqseg,wvseg):
 def draw_arc(x1,y1,x2,y2,angle,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER_MM):
     """Point 1 is start, point 2 is center. Draws the arc indicated by the x,y values
     on the given layer and with the given thickness."""
-    board = _user_stacks['Board'][-1]
+    board = getBoard()
     ds=pcbnew.DRAWSEGMENT(board)
     ds.SetShape(pcbnew.S_ARC)
     ds.SetLayer(layer)
@@ -1429,7 +1480,7 @@ def draw_arc(x1,y1,x2,y2,angle,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_P
 def draw_segment(x1,y1,x2,y2,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER_MM):
     """Draws the line segment indicated by the x,y values
     on the given layer and with the given thickness."""
-    board = _user_stacks['Board'][-1]
+    board = getBoard()
     ds=pcbnew.DRAWSEGMENT(board)
     board.Add(ds)
     ds.SetStart(pcbnew.wxPoint(x1,y1))
@@ -1441,7 +1492,7 @@ def draw_segment(x1,y1,x2,y2,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER
 def draw_segmentwx(startwxpoint,endwxpoint,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER_MM):
     """Draws the line segment indicated by the x,y values
     on the given layer and with the given thickness."""
-    board = _user_stacks['Board'][-1]
+    board = getBoard()
     if pcbnew.IsCopperLayer(layer):
         ds=pcbnew.TRACK(board)
     else:
@@ -1458,7 +1509,7 @@ def layer(layer):
     try:
         return int(layer)
     except:
-        return _user_stacks['Board'][-1].GetLayerID(layer)
+        return getBoard().GetLayerID(layer)
     
 def draw_text(text,pos,size,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER_MM):
     """Draws the line segment indicated by the x,y values
@@ -1469,7 +1520,7 @@ def draw_text(text,pos,size,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER_
     
     size = pcbnew.wxSize(size[0],size[1])
     pos = pcbnew.wxPoint(pos[0],pos[1])
-    board = _user_stacks['Board'][-1]
+    board = getBoard()
     thickness = int(thickness)
     try:
         layer = int(layer)
@@ -1619,8 +1670,8 @@ def point_round128(w):
 def SETLENGTH(initlist, length):
     """NOT IMPLEMENTED"""
     # Get GraphicalItems and Drawings.
-    allitems = list(_user_stacks['Board'][-1].GetDrawings())
-    for m in _user_stacks['Board'][-1].GetModules():
+    allitems = list(getBoard().GetDrawings())
+    for m in getBoard().GetModules():
         allitems.extend(m.GraphicalItems())
     wholelist = filter(lambda x: isinstance(x,pcbnew.DRAWSEGMENT),allitems)
     
@@ -1747,7 +1798,7 @@ def CUT():
 
     cutees = filter(
         lambda x: isinstance(x,pcbnew.DRAWSEGMENT) and x.GetShape() == pcbnew.S_SEGMENT,
-        _user_stacks['Board'][-1].GetDrawings())
+        getBoard().GetDrawings())
 
     cutter = filter(lambda x:x.IsSelected(),cutees)[0]
     scutter,ecutter = get_ds_ends(cutter)
@@ -1794,7 +1845,7 @@ def CUT():
         # within.append(cutee) 
     #pcbnew.UpdateUserInterface()
     #cutter.UnLink()
-    _user_stacks['Board'][-1].GetDrawings().Remove(cutter)
+    getBoard().GetDrawings().Remove(cutter)
     #cutter.DeleteStructure()
     return None
 def DRAWPARAMS(dims,layer):
@@ -1804,7 +1855,7 @@ def DRAWPARAMS(dims,layer):
     try:
         layerID = int(layer)
     except:
-        layerID = _user_stacks['Board'][-1].GetLayerID(str(layer))
+        layerID = getBoard().GetLayerID(str(layer))
 
     _user_stacks['drawparams'] = [t,w,h,layerID]
 
@@ -1844,7 +1895,7 @@ def convert_to_points(input):
     # return input
 def FINDNET(netname):
     # board has: 'BuildListOfNets', 'CombineAllAreasInNet', 'FindNet'
-    board = _user_stacks['Board'][-1]
+    board = getBoard()
     # nets = board.GetNetsByName()
     # netinfo = nets.find(netname).value()[1]
     
@@ -1857,7 +1908,7 @@ class commands:
     def NEWNET(self,netname):
         """Create a new net with name netname."""
 
-        board = _user_stacks['Board'][-1] 
+        board = getBoard() 
 
         # First create a new NETINFO_ITEM instance.
         netinfo = pcbnew.NETINFO_ITEM(board, netname)
@@ -1900,7 +1951,7 @@ class commands:
     def pads(self,empty):
         """Get all pads"""
         p=[]
-        for m in _user_stacks['Board'][-1].GetModules():
+        for m in getBoard().GetModules():
             p.extend(list(m.Pads()))
         return p
     pads.nargs = 0
@@ -1908,7 +1959,7 @@ class commands:
     
     def AREAS(self,empty):
         """Return all Areas of the board (includes Zones and Keepouts)."""
-        b = _user_stacks['Board'][-1]
+        b = getBoard()
         return [b.GetArea(i) for i in range(b.GetAreaCount())]
         
     AREAS.nargs = 0
@@ -1916,7 +1967,7 @@ class commands:
 
     def ZONES(self,ignore):
         """Return all Zones of the board."""
-        b = _user_stacks['Board'][-1]
+        b = getBoard()
         return filter(lambda c: not c.IsKeepout(),[b.GetArea(i) for i in range(b.GetAreaCount())])
     ZONES.nargs = 0
     ZONES.category = 'Elements,Area'
@@ -1968,14 +2019,14 @@ class commands:
     
     def KEEPOUTS(self,empty):
         """Return all Keepouts of the board."""
-        b = _user_stacks['Board'][-1]
+        b = getBoard()
         return filter(lambda c: c.IsKeepout(),[b.GetArea(i) for i in range(b.GetAreaCount())])
     KEEPOUTS.nargs = 0
     KEEPOUTS.category = 'Elements,Area'
     
     def AREACORNERS(self,arealist):
         """Area Corners."""
-        b=_user_stacks['Board'][-1]
+        b=getBoard()
         areacorners = [[a.GetCornerPosition(i) 
             for i in range(a.GetNumCorners())] 
                 for a in arealist[0]]
@@ -1983,7 +2034,7 @@ class commands:
     AREACORNERS.nargs = 1
     AREACORNERS.category = 'Geometry,Area'
     # Test:
-    # "m 81.38357,74.230848 5.612659,1.870887 5.211757,3.474503 2.138156,2.138157 10.958048,-6.1472 0.53454,5.078121 -1.06908,4.009044 -2.80633,4.276312 -2.539056,1.603616 1.202716,4.276312 9.48806,-2.939963 13.36348,8.686253 -8.95353,-0.4009 -2.13815,5.34539 -5.21176,-2.67269 -4.67722,4.54358 -2.40542,-3.0736 -4.009046,6.94901 -3.741775,4.27631 -4.142676,2.53906 1.870887,3.34087 v 3.34087 l -4.409948,2.53906 h -2.806329 l -2.80633,-0.53454 -0.267271,-2.00452 1.469982,-1.60362 0.668176,-0.4009 -0.53454,-1.73726 -4.142676,0.53454 -4.677217,-0.93544 -3.34087,-0.66817 -1.336347,-0.13364 -2.405428,3.87541 -1.469982,1.33635 -1.603616,0.66817 -5.479026,-0.66817 -2.405425,-2.80633 -0.133636,-1.60362 3.207235,-3.34087 1.870887,-2.53906 -2.80633,-2.93996 -2.672696,-4.40995 -0.668174,-2.40543 -4.409945,5.47903 -3.207234,-5.34539 -5.078121,2.13815 -3.474506,-6.14719 -8.285356,0.26726 13.229844,-8.418985 10.022607,4.81085 0.400905,-5.34539 -3.741775,-2.138156 -2.405425,-3.474503 -0.668173,-3.073601 v -7.884451 l 13.363474,5.078121 3.608139,-2.939965 5.211757,-2.271789 3.875408,-1.33635 2.138156,0.133636 3.207234,-3.474503 4.677217,-2.939965 2.405425,-0.668174 z" 1 mm fromsvg drawpoly
+    # "m 81.38357,74.230848 5.612659,1.870887 5.211757,3.474503 2.138156,2.138157 10.958048,-6.1472 0.53454,5.078121 -1.06908,4.009044 -2.80633,4.276312 -2.539056,1.603616 1.202716,4.276312 9.48806,-2.939963 13.36348,8.686253 -8.95353,-0.4009 -2.13815,5.34539 -5.21176,-2.67269 -4.67722,4.54358 -2.40542,-3.0736 -4.009046,6.94901 -3.741775,4.27631 -4.142676,2.53906 1.870887,3.34087 v 3.34087 l -4.409948,2.53906 h -2.806329 l -2.80633,-0.53454 -0.267271,-2.00452 1.469982,-1.60362 0.668176,-0.4009 -0.53454,-1.73726 -4.142676,0.53454 -4.677217,-0.93544 -3.34087,-0.66817 -1.336347,-0.13364 -2.405428,3.87541 -1.469982,1.33635 -1.603616,0.66817 -5.479026,-0.66817 -2.405425,-2.80633 -0.133636,-1.60362 3.207235,-3.34087 1.870887,-2.53906 -2.80633,-2.93996 -2.672696,-4.40995 -0.668174,-2.40543 -4.409945,5.47903 -3.207234,-5.34539 -5.078121,2.13815 -3.474506,-6.14719 -8.285356,0.26726 13.229844,-8.418985 10.022607,4.81085 0.400905,-5.34539 -3.741775,-2.138156 -2.405425,-3.474503 -0.668173,-3.073601 v -7.884451 l 13.363474,5.078121 3.608139,-2.939965 5.211757,-2.271789 3.875408,-1.33635 2.138156,0.133636 3.207234,-3.474503 4.677217,-2.939965 2.405425,-0.668174 z" 1 mm fromsvg drawsegments
     # https://www.w3.org/TR/SVG11/paths.html#PathDataGeneralInformation
 
     def fromsvg(self,inputs):
@@ -2060,33 +2111,33 @@ class commands:
     def tocommand(self,elementlist,commandname):
         """[ELEMENTLIST COMMANDNAME] Generate a command named COMMANDNAME that 
            draws the elements in ELEMENTLIST."""
-        kicommand.run(': %s "Draw Custom Drawing Command"'%commandname)
+        kicommand.kc(': %s "Draw Custom Drawing Command"'%commandname)
         for element in elementlist:
             s,e = element.GetStart(), element.GetEnd()
-            kicommand.run('%f,%f,%f,%f drawpoly'%(s[0],s[1],e[0],e[1]))
-        kicommand.run(';')
+            kicommand.kc('%f,%f,%f,%f drawsegments'%(s[0],s[1],e[0],e[1]))
+        kicommand.kc(';')
     tocommand.nargs = 2
     tocommand.category = 'Programming,Elements'
     
     def REJOIN(self,empty):
         'Using selected lines, move multiple connected lines to the isolated line.'
         # Moves the set of coniguous lines or tracks to match the single line already moved.
-        run('drawings copytop selected')
+        kc('drawings copytop selected')
         # lines = stack[-1]
         # if len(lines) <=2:
             # return
         # for line in lines:
             # output( "Selected:", line.GetStart(), line.GetEnd())
         # if isinstance(lines[0],pcbnew.TRACK):
-            # run('tracks')
+            # kc('tracks')
         # elif isinstance(lines[0],pcbnew.DRAWSEGMENT):
-            # run('drawings drawsegment filtertype')
+            # kc('drawings drawsegment filtertype')
         # else:
             # return
             
-        # run('swap connected')
+        # kc('swap connected')
         
-        #run('copy copy GetStart call swap GetEnd call append')
+        #kc('copy copy GetStart call swap GetEnd call append')
         
         # Stack is now: CONNECTED StartAndEndPoints
         # recast the end points as tuples
@@ -2174,7 +2225,7 @@ class commands:
         
     def cdproject(self,empty):
         "Programming Return the project directory (location of .kicad_pcb file)."
-        os.chdir(PROJECTPATH)
+        os.chdir(os.path.dirname(pcbnew.GetBoard().GetFileName()))
         
     def regex(self, *arglist):
         'Comparison [LIST REGEX] Create a LIST of True/False values corresponding to whether the values in LIST match the REGEX (for use prior to FILTER)'
@@ -2286,7 +2337,7 @@ def ROTATEPOINTS(points,center,angle):
 def REMOVE(items):
     if not hasattr(items,'__iter__'):
         items = [items]
-    b = _user_stacks['Board'][-1]
+    b = getBoard()
     d=b.GetDrawings().Remove
     t=b.GetTracks().Remove
     m=b.GetModules().Remove
@@ -2301,7 +2352,7 @@ def REMOVE(items):
     
 def TOCOPPER(*c):
     objects,layer = c
-    board = _user_stacks['Board'][-1]
+    board = getBoard()
     try:
         layerID = int(layer)
     except:
@@ -2385,7 +2436,7 @@ os.chdir(USERSAVEPATH)
 KICOMMAND_MODULE_DIR = os.path.dirname(inspect.stack()[0][1])
 LOADABLE_DIR = os.path.join(KICOMMAND_MODULE_DIR,'loadable')
 USERLOADPATH = USERSAVEPATH+':'+LOADABLE_DIR
-PROJECTPATH = os.path.dirname(pcbnew.GetBoard().GetFileName())
+# PROJECTPATH = os.path.dirname(pcbnew.GetBoard().GetFileName())
 # for i in range(len(inspect.stack())):
     # print(i,inspect.stack()[i][1])
     
@@ -2394,7 +2445,7 @@ def LOAD(name,path=USERLOADPATH):
         new_path = os.path.join(p, name)
         if not os.path.isfile(new_path):
             continue
-        with open(new_path,'r') as f: run(f.read())
+        with open(new_path,'r') as f: kc(f.read())
 
 def SAVE(name):
     dictname = 'user'
@@ -2648,15 +2699,15 @@ _command_dictionary.update({
         # '[BOARD] Add board to Board stack. This is the new default Board object for many commands'),
     # 'boardpop': Command(0,lambda c: _user_stacks['Board'].pop(),'Elements',
         # 'Remove last board from Board stack and place on the stack. The previous default board becomes the new default Board object for many commands'),
-    'board': Command(0,lambda c: _user_stacks['Board'][-1],'Elements',
+    'board': Command(0,lambda c: getBoard(),'Elements',
         'Get the default Board object for many commands'),
-    'modules': Command(0,lambda c: _user_stacks['Board'][-1].GetModules(),'Elements',
+    'modules': Command(0,lambda c: getBoard().GetModules(),'Elements',
         'Get all modules of the default board'),
-    'tracks': Command(0,lambda c: _user_stacks['Board'][-1].GetTracks(),'Elements',
+    'tracks': Command(0,lambda c: getBoard().GetTracks(),'Elements',
         'Get all tracks (including vias) of the default board'),
-    'drawings': Command(0,lambda c: _user_stacks['Board'][-1].GetDrawings(),'Elements',
+    'drawings': Command(0,lambda c: getBoard().GetDrawings(),'Elements',
         'Get all top-level drawing objects (lines and text) of the default board'),
-#    'toptext': Command(0,lambda c: filter(lambda x: isinstance(x,pcbnew.EDA_TEXT),_user_stacks['Board'][-1].GetDrawings()),'Elements'),
+#    'toptext': Command(0,lambda c: filter(lambda x: isinstance(x,pcbnew.EDA_TEXT),getBoard().GetDrawings()),'Elements'),
 # 'copy IsSelected call filter'
     # PCB Element Attributes
     'selected': Command(1,lambda c: filter(lambda x: x.IsSelected(), c[0]),'Attributes',
@@ -2701,7 +2752,7 @@ _command_dictionary.update({
         'segment and arc types'),
     'setlength': Command(2, lambda c: SETLENGTH(*c),'Geometry',
         '[SEGMENTLIST LENGTH] Set the length of each segment. Move connected segments accordingly.'),
-    'ends': Command(1, lambda c: get_ds_ends(*c),'Geometry',
+    'ends': Command(1, lambda c: [get_ds_ends(seg) for seg in c[0]] if hasattr(c[0],'__iter__') else get_ds_ends(*c),'Geometry',
         'Get the end points of the drawsegment (works with segment and arc types'),
     'connected': Command(2,lambda c: CONNECTED(*c),'Filter',
         '[WHOLE INITIAL] From objects in WHOLE, return those that are connected to objects in INITIAL (recursevely)'),
@@ -2732,13 +2783,15 @@ _command_dictionary.update({
     'undock': Command(0,lambda c: UNDOCK(*c),'Interface',
         'Undock the window.'),
     'spush': Command(2,lambda c: _user_stacks[c[1]].append(c[0]),'Programming',
-        '[STACK] [VALUE] Push VALUE onto the named STACK.'),
-    'spop': Command(1,lambda c: _user_stacks[c[0]].pop(),'Programming',
-        '[STACK] Pop the top of the user STACK onto the main stack.'),
+        '[STACK] [VALUE] Push VALUE onto the named STACK. spop,sdelete,scopy,scopyall'),
+    'spop': Command(1,lambda c: _user_stacks[c[0]].pop() if len(_user_stacks[c[0]])>1 else _user_stacks[c[0]],'Programming',
+        '[STACK] Pop the top of the user STACK onto the main stack only if stack contains more than 1 item. spush,sdelete,scopy,scopyall'),
+    'sdelete': Command(1,lambda c: _user_stacks.pop([c[0]],None) and None,'Programming',
+        '[STACK] Delete the user stack. spush,spop,scopy,scopyall'),
     'scopy': Command(1,lambda c: _user_stacks[c[0]][-1],'Programming',
-        '[STACK] Copy the top of the user STACK onto the main stack.'),
+        '[STACK] Copy the top of the user STACK onto the main stack. spush,spop,sdelete,scopyall'),
     'scopyall': Command(1,lambda c: _user_stacks[c[0]],'Programming',
-        '[STACK] Copy the entire user STACK as a list onto the main stack.'),
+        '[STACK] Copy the entire user STACK as a list onto the main stack. spush,sdelete,scopy,spop'),
     'stack': Command(0,lambda c: STACK(*c),'Programming',
         'Output the string representation of the objects on the stack'),
     'print': Command(0,lambda c: PRINT(*c),'Programming',
@@ -2807,20 +2860,20 @@ _command_dictionary.update({
     # Numeric
     
     # Outline all module text objects, including value and reference.
-    # r('clear referencetextobj valuetextobj moduletextobj append append copy GetTextBox call corners swap copy GetCenter call swap copy GetParent call Cast call GetOrientationDegrees call swap GetTextAngleDegrees call +l rotatepoints drawpoly')
+    # r('clear referencetextobj valuetextobj moduletextobj append append copy GetTextBox call corners swap copy GetCenter call swap copy GetParent call Cast call GetOrientationDegrees call swap GetTextAngleDegrees call +l rotatepoints drawsegments')
     # # Outline the pads. Might be a problem with "bounding box" being orthogonal when pad is rotated.
-    # r('clear pads copy GetBoundingBox call corners swap copy GetCenter call swap GetOrientationDegrees call rotatepoints drawpoly')
+    # r('clear pads copy GetBoundingBox call corners swap copy GetCenter call swap GetOrientationDegrees call rotatepoints drawsegments')
     '+.': Command(2,lambda c:
             [float(a)+float(b) for a,b in zip(c[0], cycle(c[1]))],'Numeric',
         '[LIST1 LIST2] Return the the floating point LIST1 + LIST2 member by member.'),
     '*.': Command(2,lambda c:
             [float(a)*float(b) for a,b in zip(c[0], cycle(c[1]))],'Numeric',
         '[LIST1 LIST2] Return the the floating point LIST1 * LIST2 member by member.'),
-		
+
     '+': Command(2,lambda c:
             float(c[0])+float(c[1]),'Numeric',
         '[OPERAND1 OPERAND2] Return the the floating point OPERAND1 + OPERAND2.'),
-		# floatnoerror(c[0]) if str and not ','
+        # floatnoerror(c[0]) if str and not ','
     # 'a': Command(2,
                        # lambda c: floatnoerror(c[0]) if isinstance(c[0],basestring) \
                        # and c[0].find(',') == -1 else map(lambda x: floatnoerror(x),
@@ -3015,13 +3068,13 @@ _command_dictionary.update({
     'corners': Command(1,lambda c: CORNERS(*c),'Geometry',
         "[OBJECT] OBJECT is either a single object or a list of objects. "
         "Converts each OBJECT, either EDA_RECT or OBJECT's BoundingBox "
-        "into vertices appropriate for drawpoly."
+        "into vertices appropriate for drawsegments."
         ),
     
     'tocopper': Command(2,lambda c: TOCOPPER(*c),'Layer',
         "[DRAWSEGMENTLIST LAYER] put each DRAWSEGMENT on the copper LAYER."),
     
-    'layernums': Command(1,lambda c: [_user_stacks['Board'][-1].GetLayerID(x) for x in c[0].split(',')],'Layer',
+    'layernums': Command(1,lambda c: [getBoard().GetLayerID(x) for x in c[0].split(',')],'Layer',
         '[STRING] Get the layer numbers for each layer in comma separated STRING. '
         'STRING can also be one number, if desired.'),
     'onlayers':  Command(2,lambda c: filter(lambda x: set(x.GetLayerSet().Seq()).intersection(set(c[1])),c[0]),'Layer',
@@ -3069,8 +3122,8 @@ _command_dictionary.update({
     'remove':Command(1,lambda c: REMOVE(*c),'Layer',
         '[OBJECTORLIST] remove items from board. Works with any items in Modules, Tracks, or Drawings.'),
     'tosegments':Command(2,lambda c: tosegments(*c),'Layer',
-        '[LIST LAYER] copy tracks or point pairs in LIST to drawpoly on LAYER. Copies width of each track.'),
-    'drawpoly':Command(1,lambda c: draw_segmentlist(c[0],layer=_user_stacks['drawparams']['l'],thickness=_user_stacks['drawparams']['t']),'Draw',
+        '[LIST LAYER] copy tracks or point pairs in LIST to drawsegments on LAYER. Copies width of each track.'),
+    'drawsegments':Command(1,lambda c: draw_segmentlist(c[0],layer=_user_stacks['drawparams']['l'],thickness=_user_stacks['drawparams']['t']),'Draw',
         "[POINTSLIST] Points list is interpreted as pairs of X/Y values. Line segments are"
         "drawn between all successive pairs of points, creating a connected sequence of lines "
         "where each point is a vertex in a polygon "
@@ -3139,8 +3192,12 @@ _user_stacks['drawparams'] = {
                                 'zp':0
                              }
                              
-_user_stacks['Board'].append(pcbnew.GetBoard())
+#_user_stacks['Board'].append(pcbnew.GetBoard())
 
+def getBoard():
+    if len(_user_stacks['Board']) == 0:
+        _user_stacks['Board'].append(pcbnew.GetBoard())
+    return _user_stacks['Board'][-1]
 # _user_stacks = {'drawparams':
 # {'t':0.3*pcbnew.IU_PER_MM, 'w':1*pcbnew.IU_PER_MM, 'h':1*pcbnew.IU_PER_MM,'l':pcbnew.Dwgs_User,
 # 'zt':pcbnew.CPolyLine.NO_HATCH,'zp':0},
@@ -3163,7 +3220,7 @@ def print_userdict(command=None):
             output( ":",found,text,';')
             
 # r('CLEAR MODULETEXTOBJ VALUETEXTOBJ APPEND REFERENCETEXTOBJ APPEND COPY GetTextBox CALL CORNERS SWAP COPY GetCenter CALL SWAP GetTextAngleDegrees CALL ROTATEPOINTS DRAWSEGMENTS')
-#    'not': Command(0,lambda c: run('0 FLOAT ='),'Comparison'),
+#    'not': Command(0,lambda c: kc('0 FLOAT ='),'Comparison'),
 
 #output( 'ops',str(stack))
 def printcategories():
@@ -3196,14 +3253,14 @@ def pad_to_drawsegment(pad):
         pcbnew.PAD_SHAPE_OVAL:pcbnew.S_RECT,
         pcbnew.PAD_SHAPE_TRAPEZOID:pcbnew.S_RECT,
     }
-    board = _user_stacks['Board'][-1]
+    board = getBoard()
     ds=pcbnew.DRAWSEGMENT(board)
     board.Add(ds)
     layer = _user_stacks['drawparams']['l']
     try:
         layerID = int(layer)
     except:
-        layerID = _user_stacks['Board'][-1].GetLayerID(str(layer))
+        layerID = getBoard().GetLayerID(str(layer))
 
     ds.SetLayer(layerID) # TODO: Set layer number from string
     ds.SetWidth(max(1,int(_user_stacks['drawparams']['t'])))
@@ -3227,9 +3284,9 @@ def pad_to_drawsegment(pad):
     # viasmicrovia_selected = filter(lambda x: isinstance(x,pcbnew.VIA_MICROVIA),tracks_selected)
     # viasnotdefined_selected = filter(lambda x: isinstance(x,pcbnew.VIA_NOT_DEFINED),tracks_selected)
 
-    # toptext = filter(lambda x: isinstance(x,pcbnew.EDA_TEXT) and x.IsSelected(),_user_stacks['Board'][-1].GetDrawings())
+    # toptext = filter(lambda x: isinstance(x,pcbnew.EDA_TEXT) and x.IsSelected(),getBoard().GetDrawings())
     # moduleitems=[]
-    # for m in _user_stacks['Board'][-1].GetModules():
+    # for m in getBoard().GetModules():
         # moduleitems.extend(m.GraphicalItems())
     # moduletext = filter(lambda x: isinstance(x,pcbnew.EDA_TEXT),moduleitems)
 
@@ -3280,8 +3337,7 @@ def pad_to_drawsegment(pad):
 # except:
     # pass
 
-    
-# plugin = aplugin()
-# aplugin.register(plugin)
-# plugin.Run()
+def __main__(self):
+    KiCommandAction().register()
 
+#wx.MessageDialog(None,'KiCommand __name__: '+__name__).ShowModal()

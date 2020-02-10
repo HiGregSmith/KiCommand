@@ -23,7 +23,7 @@
         ;
 :persist outlinepads "Draw Outline all pads using line segments with the layer and width specified by drawparams." 
         pads copy corners swap copy GetCenter call swap 
-        GetOrientationDegrees call rotatepoints drawpoly
+        GetOrientationDegrees call rotatepoints drawsegments
         ;
 :persist outlinetext "Draw Outline all text objects with the layer and width specified by drawparams."
         valuetextobj
@@ -32,13 +32,13 @@
         toptextobj concat
         copy GetTextBox call corners swap copy GetCenter call swap 
         copy GetTextAngleDegrees call swap GetParent call Cast call GetOrientationDegrees call
-        +l rotatepoints drawpoly
+        +l rotatepoints drawsegments
         ;
         
 :persist outlinetoptext "Draw Outline all top text objects with the layer and width specified by drawparams."
         toptextobj
         copy GetTextBox call corners swap copy GetCenter call swap
-        GetTextAngleDegrees call rotatepoints drawpoly ;
+        GetTextAngleDegrees call rotatepoints drawsegments ;
         ;
 :persist texttosegments "Draw [TEXTOBJLIST LAYER] Copies text objects in TEXTOBJLIST to LAYER."
         swap copy GetThickness call list swap 
@@ -57,7 +57,6 @@
 :persist len "Conversion [LIST] return the length of the list" ilist list list builtins 'len sindex list swap stack fcallargs sum stack ;
 :persist newboard "Elements Create a new empty board and make it the current board." pcbnew list BOARD call delist Board spush ;
 :persist newadd "Elements [TYPE PARENT] Add a new element of TYPE to PARENT. Returns the new module." list copy pcbnew list swap list 3 pick callargs 1 pick 1 pick list Add callargs pop swap pop swap pop delist ;
-:persist drawsegments "Draw [POINTSLIST] Alias for drawpoly." drawpoly ;
 
 :persist true "Programming Returns the value True." 1 bool ;
 :persist false "Programming Returns the value False."' bool ;

@@ -1,7 +1,7 @@
 #import unittest
 import kicommand 
-#.run as kc
-from kicommand import run as kc
+#from kicommand.kicommand import kc
+kc = kicommand.kicommand.kc
 import platform
 import sys
 import pcbnew

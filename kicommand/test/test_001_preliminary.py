@@ -1,5 +1,5 @@
 import unittest
-from kicommand import run as kc
+from kicommand.kicommand import kc
 
 class TestBasicClear(unittest.TestCase):
 # conversion: mils fromsvg dict mil string list ilist index. len delist float mm pairwise int iset bool split 

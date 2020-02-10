@@ -1,5 +1,5 @@
 import unittest
-from kicommand import run as kc
+from kicommand.kicommand import kc
 import pcbnew
 
 class TestProgramming(unittest.TestCase):
@@ -7,7 +7,7 @@ class TestProgramming(unittest.TestCase):
 # remaining:  fromsvg string ilist index. pairwise iset split 
 
     def test_istype(self):
-        self.assertEqual(kc('board list BOARD istype'),[True])
+        self.assertEqual(kc('BOARD_TEST print pop board print list BOARD istype print BOARD_TEST print pop'),[True])
         self.assertEqual(kc('board list MODULE istype'),[False])
 
     def test_filter_filtertype_board(self):

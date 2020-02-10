@@ -1,6 +1,5 @@
 import unittest
-from kicommand import run as kc
-import pcbnew
+from kicommand.kicommand import kc
 
 class TestAppendConcatExtend(unittest.TestCase):
 

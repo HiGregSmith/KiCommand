@@ -27,15 +27,12 @@ Here are a few short examples:
 ## Getting Started
 ### Installation
 
-
-
-
 - Place the entire kicommand folder in 
 **C:\Program Files\KiCad\share\kicad\scripting\plugins**
 Or the equivalent in MacOS or Linux
 (*there may be a user-level directory for such files, but I am not aware of it at the moment.*)
 
-#### For KiCad nightly
+#### For KiCad (5.1.5)-3 release:
 KiCommand is an ActionPlugin and is installed similarly to other Action Plugins:
 
 1) Within KiCad pcbnew, select the Tools > External Plugins > Refresh Plugins
@@ -43,15 +40,24 @@ KiCommand is an ActionPlugin and is installed similarly to other Action Plugins:
 
 KiCommand dialog box is shown when the Tools > External Plugins > KiCommand menu item is selected.
 
-#### For KiCad 4.0.7 stable:
+#### From the Scripting Console
 
-Enable Tools > Scripting Console then enter
+Select *Tools > Scripting Console...* then enter
 
     import kicommand
+    kicommand.KiCommandAction.getInstance().Run()
+    from kicommand.kicommand import kc
+    
+This will show the KiCommand dialog, and is exactly what is run when KiCommand is selected from the "External Tools..." menu. The last line will allow you to enter *KiCommand* commands from the console using the *kc* command:
 
-This will show the KiCommand dialog.
-(Note that not all commands have been tested in 4.0.7).
+    kc('board print')
 
+### Testing Your Installation
+Select *Tools > Scripting Console...* then enter
+
+    import kicommand.test
+
+This will execute a series of tests, running a series of *KiCommand* commands and verifying the results. You should see all of the tests return *OK*.
 
 ### Self Documented Help
 When KiCommand starts up, it displays help information to get you started.
@@ -90,9 +96,9 @@ And several disadvantages:
 
 - Built in commands have flexible argument types, while Python commands
 (accessed with **callargs**) may require careful argument manipulation.
-- Most commands are simple and straightforward, while complex commands are
+- Many commands are simple and straightforward, while complex commands are
 possible. The stack-based structure makes some complex strings difficult to
-decipher or create even for experienced programmers.
+decipher or create, even for experienced programmers.
 - While creating entirely new elements from scratch is usually possible,
 command strings are sometimes wordy.
 - There are currently no looping or conditional commands.
@@ -105,7 +111,7 @@ In KiCommand, a *Command String* contains a sequence of arguments and commands
 that are executed sequentially. Arguments occur before the command that uses 
 them. The arguments are *consumed* by a command and the results of the command
 are stored on top of any previously unused arguments or results, making those 
-arguments and results available to a future commands. 
+arguments and results available to future commands. 
 
 This is implemented and often imagined as a *stack* structure.
 In this structure, the stack holds *values* (aka *operands* or *arguments*) that are used in
@@ -116,10 +122,9 @@ Several important characteristics of the stack structure of programming:
 - operands are placed **on top of the** ***stack*** when encountered in the 
 *command string*
 - operands are removed **from the top of the** ***stack*** when commands are encountered in the command string
-- operands are placed **on top of the** ***stack*** when returned from executed commands
-- results from previous commands, when unused, continue to exist on the stack
-and can be used for future commands. In this way, results from past commands
-build up to become arguments for future commands.
+- results from commands are placed **on top of the** ***stack***, to be used as operands in future commands.
+- results from previous commands continue to exist on the stack until used.
+In this way, results from past commands build up to become arguments for future commands.
 - again, commands generally remove their arguments from the stack and return their results
 to the stack. If you need to execute several commands on the same argument, the
 **copy** and **swap** commands will be useful.
@@ -183,14 +188,13 @@ recommended that any defined commands include a category and help text.
 
 The recommended way of defining a new command is:
 
-**: commandname "Category [Argument1 Argument2] Help Text To Explain the Command, including the  arguments." arguments and commands ;**
+**: commandname "Category [Argument1 Argument2] Help Text To Explain the Command, including the  arguments." arguments and commands seealso_command1,seealso_command2 ;**
 
 
 An example is like this:
-**: setselect "Elements [OBJECTLIST] Sets the objects as Selected." SetSelected call ;**
+**: setselect "Elements [OBJECTLIST] Sets the objects as Selected. clearselect,select" SetSelected call ;**
 
-When defined, the **seteselect** command will show the help text in the **explain**
-command and will be listed in the *Elements* category with the **helpcat** command.
+After defined in this way, the **'seteselect explain** command will show the help text. Note the initial single quote mark. The newly defined **setselect** command will be listed in the *Elements* category with the **helpcat** command.
 
 More examples can be seen in the *kicommand_persist.commands* file or by using the **seeall** command.
 
@@ -201,10 +205,11 @@ KiCommand follows a general set of conventions:
 - Commands are all lower case.
 - Arguments are usually Mixed Case.
 - Python commands within Command Stack are whatever is needed, but mostly will be Mixed Case or UPPER CASE.
-- To enter an argument that also happens to be a command, use the single quote mark (') such as in the following string: **'calllist help**
+- To enter a string argument that also happens to be a command, use the single quote mark (') such as in the following string: **'calllist help**
 - To enter an argument that requires any spaces (such as a filename or command help text),
 use double quotes around the argument (i.e. **"argument with spaces"**).
 - Access to Python functions and attributes are exactly as documented in the [Python pcbnew documentation](http://docs.kicad-pcb.org/doxygen-python/namespacepcbnew.html), which are often in either mixed case or all caps. Example: **modules GetCenter call**
+- Arguments are handled slightly differently in the **call** and **callargs** commands. They operate fairly seamlessly with, and often require lists. Calling a Python function on list executes that function on each member of the list. 
 - Define a new command with the colon, and end with the semicolon.
     - **: newcommand ARG Arg command ARG command ;**
 - Core commands either place objects on the stack or operate on objects on the stack. The commands that place a list of objects on the stack are in the category *Elements* and are listed with the command **Elements helpcat**:
@@ -237,7 +242,7 @@ are in the single argument as a list of lists, where each inner list contains th
 for a single call. The inner list contains as many members as arguments necessary
 for the command. The commands **zip2**, **float**, **list** and **delist** might be useful here.
 - **attr** - retrieves an attribute from an object. This can be a value or a function, though
-if it were a function, it's probably more useful with the **call** or **callargs** commands.
+if it were a function, it's probably more useful with the **call** or **callargs** commands to actually call the function.
 
 ### Lists
 Many commands can use lists as arguments. Often, lists as
