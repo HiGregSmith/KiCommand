@@ -3151,7 +3151,7 @@ _dictionary['command'].update({
         '[SEGMENTLIST] Move/stretch the selected segments into a regular '
         'polygon (equal length sides, equal angles).'),
     'grid': Command(2,lambda c:GRID(*c),'Draw',
-        '[SEGMENTLIST GRID] Move points of SEGMENTLIST to be a multiple of GRID.'),
+        '[ITEMLIST GRID] Move points of ITEMLIST to be a multiple of GRID. Start/End points of segments/tracks are moved, and position of BOARD_ITEMs are moved to grid.'),
     'scale': Command(2,lambda c:SCALE(*c),'Draw',
         '[SEGMENTLIST FACTOR] Scale each item in SEGMENTLIST by FACTOR, using '
         'the midpoint of all segments as the center.'),
