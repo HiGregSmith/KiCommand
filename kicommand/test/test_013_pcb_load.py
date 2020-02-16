@@ -1,36 +1,49 @@
+from __future__ import print_function
+
 import os
 import code
 import unittest
 import pdb
+import sys
 from kicommand.kicommand import kc
 
-KICAD_INSTALL = r'C:\Program Files\KiCad'
+# sys.executable
+# 'C:/Program Files/KiCad/bin/kicad.exe'
+# KICAD_INSTALL = r'C:\Program Files\KiCad'
 
+KICAD_INSTALL = os.path.dirname(os.path.dirname(sys.executable))
+demodirectory = os.path.join(KICAD_INSTALL,'share','kicad','demos')
+demopath=os.path.join(demodirectory,'complex_hierarchy','complex_hierarchy.kicad_pcb')
+
+	
 class TestPCBLoad(unittest.TestCase):
     # for kc command, the entire stack is returned
     def tearDown(self):
         kc('Board spop clear')
     def setUp(self):
-        file = os.path.join(KICAD_INSTALL,r'share\kicad\demos\complex_hierarchy\complex_hierarchy.kicad_pcb')
+        file = demopath
         self.pcb = kc('clear pcbnew list "%s" list list LoadBoard callargs '
             'delist Board spush Board scopy'%file)
         
-    def test_pcb_load(self):
+    def test_LoadBoard(self):
+        # for root, dirs, files in os.walk("demodirectory"):
+            # matches = [file for file in files if file.endswith('.kicad_pcb')]
+            # print(matches)
     	self.assertNotEqual(self.pcb,None)
 
-    def test_pcb_track_count(self):
+    def test_tracks(self):
     	# self.assertEqual(len(tracks),361)
         
     	#self.assertTrue(kc('clear tracks ilist len list 360 int = delist')[-1])
     	#self.assertEqual(kc('clear tracks ilist len'),360)
     	self.assertEqual(kc('clear tracks ilist len'),373) # kicad 5.1.5
 
-    def test_pcb_modules(self):
+    def test_modules(self):
         #self.assertEqual(len(modules), 72)
         
     	self.assertTrue(kc('clear modules ilist len list 68 int = delist'))
 
-    def test_pcb_module_references(self):
+    def test_referencetext(self):
             
             
         self.assertTrue(kc(
@@ -59,7 +72,7 @@ class TestPCBLoad(unittest.TestCase):
         # Check value:
         # P1,P3,C2,C1,D1,Q3,Q5,Q7,Q6,Q1,Q2,Q4,Q8,P2,U1,U4,P4,P5,P6,U3,R9,R15,RV1,RV2,C3,C4,C5,C6,C7,C8,C9,D2,D3,D4,D5,D6,D7,R3,R4,R5,R6,R7,R8,R10,R11,R12,R13,R14,R16,R17,R18,R19,R20,R21,R22,MIRE,C10,C11,U2,C14,C12,R23,R24,D9,D8,R25,R26,R27,R28 split iset
     
-    def test_pcb_netcount(self):
+    def test_GetNetCount(self):
         #self.assertTrue(kc('board list GetNetCount call 51 int = delist')[-1])
 
         self.assertEqual(kc('board list GetNetCount call delist'),53)

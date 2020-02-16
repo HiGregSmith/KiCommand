@@ -1,15 +1,17 @@
 #import unittest
 import kicommand 
 #from kicommand.kicommand import kc
-kc = kicommand.kicommand.kc
+from kicommand.kicommand import kc
 import platform
-import sys
+import os,sys
 import pcbnew
 
 if platform.python_version() < '2.7':
     unittest = __import__('unittest2')
 else:
     import unittest
+
+KICAD_INSTALL = os.path.dirname(os.path.dirname(os.path.abspath(sys.executable)))
 
 # https://stackoverflow.com/questions/15487587/python-unittest-get-testcase-ids-from-nested-testsuite
 def iterate_tests(test_suite_or_case):
@@ -35,9 +37,9 @@ def runtests():
     global testsuite
     testsuite = unittest.TestLoader().discover('kicommand.test',pattern="test_*.py")
     suite = unittest.TestLoader().loadTestsFromTestCase(TestKiCommand)
-    unittest.TextTestRunner(verbosity=2).run(suite)
-
-    results = unittest.TextTestRunner(verbosity=100).run(testsuite)
+    #unittest.TextTestRunner(verbosity=2).run(suite)
+    fullsuite = unittest.TestSuite((suite,testsuite))
+    results = unittest.TextTestRunner(verbosity=100).run(fullsuite)
 
 
 class TestKiCommand(unittest.TestCase):
@@ -63,11 +65,10 @@ class TestKiCommand(unittest.TestCase):
         # individually list tests that cannot be named python functions
 		# stack, print, and printf are not tested. They don't modify the stack at all, they only print to the output window.
 
-        untested = untested - set(('*','+','-','/','+.','*.','index.')) - set(('stack','print','printf'))
+        untested = untested - set(('*','+','-','/','+.','*.','index.')) - set(('stack','print','printf',':persist',';'))
         untestedlist = list(untested)
         untestedlist.sort()
         print 'untested',untestedlist
-        self.assertEqual(True,True)
 
             
 #unittest.main()

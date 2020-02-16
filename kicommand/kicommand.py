@@ -4,6 +4,8 @@ from __future__ import print_function
 import collections
 from collections import defaultdict, Counter
 from itertools import compress,cycle
+# pcbnew.GetUnLoadableWizards()
+# pcbnew.GetWizardsBackTrace()
 
 # handle python3 or python2. In python2, import izip as zip
 try:
@@ -39,8 +41,7 @@ except NameError:
   
 _dictionary = {'user':{}, 'persist':{}, 'command':{}}
 # collections.OrderedDict
-_command_dictionary = _dictionary ['command']
-stack = []
+_stack = []
 
 def getPcbnewWindow():
     try:
@@ -262,8 +263,66 @@ class gui(kicommand_gui.kicommand_panel):
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             #print(exc_type, fname, exc_tb.tb_lineno)  
             output(str(e))
-            wx.MessageDialog(self.GetParent(),"Error 1 on line %s: %s\n%s"%
+            wx.MessageDialog(self.GetParent(),"Error on line %s: %s\n%s"%
                (exc_tb.tb_lineno, str(e), traceback.format_exc())).ShowModal()
+
+import inspect
+USERSAVEPATH = os.path.join(os.path.expanduser('~'),'kicad','kicommand')
+os.chdir(USERSAVEPATH)
+
+KICOMMAND_MODULE_DIR = os.path.dirname(inspect.stack()[0][1])
+LOADABLE_DIR = os.path.join(KICOMMAND_MODULE_DIR,'loadable')
+USERLOADPATH = USERSAVEPATH+':'+LOADABLE_DIR
+# PROJECTPATH = os.path.dirname(pcbnew.GetBoard().GetFileName())
+# for i in range(len(inspect.stack())):
+    # print(i,inspect.stack()[i][1])
+
+_newcommanddictionary = None
+_compile_mode = False
+
+def setcompilemode(val=True, dictionary='user'):
+    global _compile_mode
+    global _newcommanddictionary
+    _newcommanddictionary = dictionary
+    _compile_mode=val
+    
+def LOAD(name,path=USERLOADPATH):
+    for p in path.split(':'):
+        new_path = os.path.join(p, name)
+        if not os.path.isfile(new_path):
+            continue
+        with open(new_path,'r') as f: kc(f.read())
+
+"""Tracks whether compile mode is on, allowing new command definitions.
+   This is affected by the commands : and ;"""
+_command_definition = []
+
+_user_stacks = defaultdict(list)
+
+_user_stacks['drawparams'] = { 
+                                't':0.3*pcbnew.IU_PER_MM,
+                                'w':1*pcbnew.IU_PER_MM,
+                                'h':1*pcbnew.IU_PER_MM,
+                                'l':pcbnew.Dwgs_User, 
+                                'zt':pcbnew.ZONE_CONTAINER.NO_HATCH,
+                                'zp':0
+                             }
+                             
+#_user_stacks['Board'].append(pcbnew.GetBoard())
+
+def output(*args):
+
+    w = KiCommandAction.getWindow()
+    if w is None or getattr(w,'outputbox',None) is None:
+        # Here's the simple 'print' definition of output
+        for arg in args:
+            print(arg,end=' ')
+        print()
+    else:
+        for arg in args:
+            w.outputbox.AppendText(str(arg)+' ')
+        w.outputbox.AppendText('\n')
+    
 
 def kc(commandstring,returnval=0):
     """returnval -1 return entire stack, 0 return top, >0 return that number of elements from top of list as a list."""
@@ -273,19 +332,21 @@ def kc(commandstring,returnval=0):
 # Commands beginning with ? are conditional. The top of the stack is popped,
 # and if it was True, then the command is executed.
     try:
-        global stack
+        global _stack
         global _compile_mode
         global _command_definition
-        global _user_dictionary
         global _dictionary
-        #output( _command_dictionary.keys())
-        #output( str(stack))
+        #output( _dictionary ['command'].keys())
+        #output( str(_stack))
         
         # if not aplugin:
             # KiCommandAction().register()
         # if not aplugin:
             # print("Error registering plugin with PCBNEW")
         #print(type(commandstring))
+		
+        #output(str(['%s:%d'%(dictname,len(_dictionary[dictname])) for dictname in ('user','persist','command')]))
+		
         commandlines = commandstring.splitlines()
         commands = []
         for commandstring in commandlines:
@@ -315,7 +376,7 @@ def kc(commandstring,returnval=0):
                 _compile_mode = False
                 comm = _command_definition[:1]
                 if not comm: # delete all commands in the user dictionary: ': ;'
-                    _user_dictionary = {}
+                    _dictionary['user'] = {}
                     continue
                 comm = comm[0]
                 cdef = _command_definition[1:]
@@ -335,7 +396,7 @@ def kc(commandstring,returnval=0):
                         _dictionary[_newcommanddictionary][comm] = UserCommand(cdef,'','')
                         #_dictionary[_newcommanddictionary][comm] = ' '.join(cdef)
                 else: # delete a command in the user dictionary: ': COMMAND ;'
-                    del(_user_dictionary[_command_definition[0]])
+                    del(_dictionary['user'][_command_definition[0]])
                 _command_definition = []
                 continue
 
@@ -344,7 +405,7 @@ def kc(commandstring,returnval=0):
                 continue
             
             if command.startswith("'"):
-                stack.append(command[1:])
+                _stack.append(command[1:])
                 continue
                 
             found = False
@@ -357,16 +418,16 @@ def kc(commandstring,returnval=0):
                 if isinstance(commandToExecute,Command):
                     #output('%s is Command'%command)
                     numop = commandToExecute.numoperands
-                    if len(stack) < numop:
+                    if len(_stack) < numop:
                         raise TypeError('%s expects %d arguments on the stack.'%(command,numop))
                     if numop:
-                        result = commandToExecute.execute(stack[-numop:])
-                        stack = stack[:-numop]
+                        result = commandToExecute.execute(_stack[-numop:])
+                        _stack = _stack[:-numop]
                     else:
                         result = commandToExecute.execute([]) # TODO should this be [] ?
                         
                     if result != None:
-                        stack.append(result)
+                        _stack.append(result)
                 elif isinstance(commandToExecute,UserCommand):
                     #output('%s is UserCommand'%command)
                     kc(' '.join(commandToExecute.execute))
@@ -376,26 +437,26 @@ def kc(commandstring,returnval=0):
                 found = True
                 break
             if not found:
-                stack.append(command)
+                _stack.append(command)
             
             
-        if len(stack):
-            output( len(stack), 'operands left on the stack.' )
+        if len(_stack):
+            output( len(_stack), 'operands left on the stack.' )
         try:
             pcbnew.UpdateUserInterface()
         except:
             pass
         #print('User dictionary',_dictionary['user'])
         if returnval == 0:
-            if stack:
-                return stack[-1]
+            if _stack:
+                return _stack[-1]
             else:
                 return None
         elif returnval == -1:
-            return stack
+            return _stack
         elif returnval > 0:
             #returnval = -1 - returnval
-            return stack[-returnval:]
+            return _stack[-returnval:]
     except Exception as e:
         # print(traceback.format_exc())
         #e = sys.exc_info()[0]
@@ -429,6 +490,7 @@ class KiCommandAction(pcbnew.ActionPlugin):
             raise Exception("Use getInstance() to get the singleton instance.")
         else:
             self.__class__.__instance = self
+
     def defaults(self):
         self.name = "KiCommand"
         self.category = "Command"
@@ -441,6 +503,7 @@ class KiCommandAction(pcbnew.ActionPlugin):
             parent = [x for x in wx.GetTopLevelWindows() if x.GetTitle().startswith('Pcbnew')][0]
         except:
             # top level windows not set up yet
+            #wx.MessageDialog(None,'KiCommand Window setup failed. pcbnew window not available.').ShowModal()
             return
         # global aplugin
         # if aplugin:
@@ -452,6 +515,11 @@ class KiCommandAction(pcbnew.ActionPlugin):
                 # wx.GetTopLevelWindows()
             # )[0]
         # better for Python3
+        if self.__class__.__window:
+            # bring to front
+            #self.__class__.__window.Restore()
+            self.__class__.__window.Raise()
+            return
         self.__class__.__window=gui(parent)
         pane = wx.aui.AuiPaneInfo()                       \
          .Caption( u"KiCommand" )                   \
@@ -465,9 +533,6 @@ class KiCommandAction(pcbnew.ActionPlugin):
         manager = wx.aui.AuiManager.GetManager(parent)
         manager.AddPane( self.__class__.getWindow(), pane )
         manager.Update()
-        loadname = os.path.join(os.path.dirname(__file__),'kicommand_persist.commands')
-        #print ('Loading from %s'%os.path.normpath(loadname))
-        LOAD('kicommand_persist.commands',path=os.path.dirname(__file__))
 
         kc('help')
 
@@ -483,31 +548,21 @@ def UNDOCK():
     # self.mgr.GetPane(text1).Float()
     # wx.aui.AuiManager.GetPane(wx.aplugin.g, item)
 def STACK():
-    for obj in stack:
+    for obj in _stack:
         output(obj)
 def PRINT():
     """print the top of the stack"""
-    output(stack[-1])
+    output(_stack[-1])
         
 def CLEAR():
-    global stack
-    stack = []
+    global _stack
+    _stack = []
     return None
     
 def SWAP():
-    global stack
-    stack[-1],stack[-2]=stack[-2],stack[-1]
+    global _stack
+    _stack[-1],_stack[-2]=_stack[-2],_stack[-1]
 # clear modules selected Reference call 0 bool list list SetVisible stack
-def output(*args):
-
-    for arg in args:
-        KiCommandAction.getWindow().outputbox.AppendText(str(arg)+' ')
-    KiCommandAction.getWindow().outputbox.AppendText('\n')
-    return
-    # Here's the simple 'print' definition of output
-    for arg in args:
-        print(arg,end=' ')
-    print()
 
 def tosegments(*c):
     tracklist,layer = c
@@ -692,10 +747,16 @@ def close_enough(a,b):
 def GRID(dseglist,grid):
     grid = int(grid)
     for seg in dseglist:
-            for gp,sp in ((seg.GetStart,seg.SetStart),(seg.GetEnd,seg.SetEnd)):
-                p = gp()
-                newp=pcbnew.wxPoint(int(round(p[0]/grid)*grid),int(round(p[1]/grid)*grid))
-                sp(newp)
+            if isinstance(seg,pcbnew.DRAWSEGMENT):
+                for gp,sp in ((seg.GetStart,seg.SetStart),(seg.GetEnd,seg.SetEnd)):
+                    p = gp()
+                    newp=pcbnew.wxPoint(int(round(p[0]/grid)*grid),int(round(p[1]/grid)*grid))
+                    sp(newp)
+            else: # this works for BOARD_ITEMs
+                for gp,sp in ((seg.GetPosition,seg.SetPosition),):
+                    p = gp()
+                    newp=pcbnew.wxPoint(int(round(p[0]/grid)*grid),int(round(p[1]/grid)*grid))
+                    sp(newp)
         
 # Scale to 100 mm and make one of the segments parallel to angle 0
 # 100 mm 0 clear drawings selected copy connect copy regular copy copy length delist 100 mm swap /f scale copy delist list angle delist 0 swap -f rotate
@@ -2123,7 +2184,7 @@ class commands:
         'Using selected lines, move multiple connected lines to the isolated line.'
         # Moves the set of coniguous lines or tracks to match the single line already moved.
         kc('drawings copytop selected')
-        # lines = stack[-1]
+        # lines = _stack[-1]
         # if len(lines) <=2:
             # return
         # for line in lines:
@@ -2142,7 +2203,7 @@ class commands:
         # Stack is now: CONNECTED StartAndEndPoints
         # recast the end points as tuples
         lines_by_vertex = defaultdict(set) #{}
-        for line in stack[-1]:
+        for line in _stack[-1]:
             # output( 'Connected: ',line)
             for p in (line.GetStart(),line.GetEnd()):
                 lines_by_vertex[(p.x,p.y)].add(line)
@@ -2156,13 +2217,13 @@ class commands:
         # if both vertexes have only one line in lines_by_vertex, then it's the lonely line
         lonely_line = []
         connected_lines = []
-        for line in stack[-1]:
+        for line in _stack[-1]:
             if len(lines_by_vertex[(line.GetStart().x,line.GetStart().y)]) == 1 \
                and len(lines_by_vertex[(line.GetEnd().x,line.GetEnd().y)]) == 1:
                 lonely_line.append(line)
             else:
                 connected_lines.append(line)
-        stack.pop()
+        _stack.pop()
         # output( 'lonely',len(lonely_line),'; connected',len(connected_lines))
         if len(lonely_line) != 1:
             # output( 'no loney_line')
@@ -2266,11 +2327,13 @@ class commands:
     #'help': Command(0,lambda c: HELPMAIN(),'Help', "Shows general help"),
     
 commands.classinstance = commands()
+
+# Add commands from commands class
 # added for python3: "not x.startswith('__') and "
 for c in filter(lambda x: not x.startswith('__') and hasattr(getattr(commands,x), '__call__'),dir(commands)):
     f = getattr(commands.classinstance,c)
     if hasattr(f,'category'):
-        _dictionary ['command'][c.lower()] = Command(f.nargs,f,f.category,f.__doc__)
+        _dictionary['command'][c.lower()] = Command(f.nargs,f,f.category,f.__doc__)
     else:
         # Format of comment is: 'Category [ARGUMENT1 ARGUMENT2] Description'
         # from beginning, Search for first letter, then first space
@@ -2289,7 +2352,7 @@ for c in filter(lambda x: not x.startswith('__') and hasattr(getattr(commands,x)
             # print(c,':',arg)
         # else:
             # print(c,':',numarg)
-        _dictionary ['command'][c.lower()] = Command(nargs,f,category,doc)
+        _dictionary['command'][c.lower()] = Command(nargs,f,category,doc)
 
 
 def rotate_point(point,center,angle,ccw=True):
@@ -2429,23 +2492,6 @@ def CORNERS_old(c):
         #elif isinstance(poly[0],pcbnew.wxPoint):
     return xyvals
 
-import inspect
-USERSAVEPATH = os.path.join(os.path.expanduser('~'),'kicad','kicommand')
-os.chdir(USERSAVEPATH)
-
-KICOMMAND_MODULE_DIR = os.path.dirname(inspect.stack()[0][1])
-LOADABLE_DIR = os.path.join(KICOMMAND_MODULE_DIR,'loadable')
-USERLOADPATH = USERSAVEPATH+':'+LOADABLE_DIR
-# PROJECTPATH = os.path.dirname(pcbnew.GetBoard().GetFileName())
-# for i in range(len(inspect.stack())):
-    # print(i,inspect.stack()[i][1])
-    
-def LOAD(name,path=USERLOADPATH):
-    for p in path.split(':'):
-        new_path = os.path.join(p, name)
-        if not os.path.isfile(new_path):
-            continue
-        with open(new_path,'r') as f: kc(f.read())
 
 def SAVE(name):
     dictname = 'user'
@@ -2499,7 +2545,7 @@ def EXPLAIN(commandstring,category=None):
                 printed.add(command)
 
 def HELPALL():
-    sorted = list(_command_dictionary.keys())
+    sorted = list(_dictionary['command'].keys())
     sorted.sort()
     for command in sorted:
         print_command_detail(command)
@@ -2541,7 +2587,7 @@ def HELPMAIN():
     output()
     
     commands = 'helpcat explain helpall'.split()
-    # commands = filter(lambda c: c[1].category == 'Help', _command_dictionary.iteritems())
+    # commands = filter(lambda c: c[1].category == 'Help', _dictionary['command'].iteritems())
     # commands = [command[0] for command in commands]
     # commands.sort()
     for command in commands:
@@ -2556,7 +2602,7 @@ def HELPCAT(category):
         uniondict.update(_dictionary[dictname])
 
     if category == 'Core':
-        commands = _command_dictionary.iteritems()
+        commands = _dictionary ['command'].iteritems()
     elif category == 'All':
         commands = uniondict.iteritems()
         
@@ -2638,9 +2684,9 @@ def HELP(textlist,category=None,exact=False):
             pass
         #text=text.lower()
         if category == 'All':
-            foundkv = _command_dictionary.iteritems()
+            foundkv = _dictionary ['command'].iteritems()
             command_by_category = defaultdict(list) #{}
-            for command,val in _command_dictionary.iteritems():
+            for command,val in _dictionary ['command'].iteritems():
                 #command_by_category.setdefault(val.category,[]).append(command)
                 command_by_category[val.category].append(command)
                 
@@ -2648,15 +2694,15 @@ def HELP(textlist,category=None,exact=False):
                 output('%11s: %s\n'%(category,' '.join(commands))),
             return
             # foundkv = sorted(foundkv,key=lambda x: x[1].category)
-            # foundkv = filter(lambda x: x[2].find(text)!=-1,_command_dictionary.iteritems())
+            # foundkv = filter(lambda x: x[2].find(text)!=-1,_dictionary['command'].iteritems())
         
         if text:
             if exact:
-                foundkv = text,_command_dictionary.get(text,None)
+                foundkv = text,_dictionary['command'].get(text,None)
             else:
-                foundkv = filter(lambda x: x[0].find(text)!=-1,_command_dictionary.iteritems())
+                foundkv = filter(lambda x: x[0].find(text)!=-1,_dictionary['command'].iteritems())
         else:
-            foundkv = _command_dictionary.iteritems()
+            foundkv = _dictionary['command'].iteritems()
         #output( 'foundkv = ',foundkv)
         if not foundkv or not foundkv[1]:
             continue
@@ -2671,7 +2717,8 @@ def HELP(textlist,category=None,exact=False):
 
 
 
-_command_dictionary.update({
+# Add more command definitions
+_dictionary['command'].update({
     # PCB Elements
     # ': board pcbnew GetBoard call ;'
     # ': modules board GetModules call ;'
@@ -2908,8 +2955,8 @@ _command_dictionary.update({
         '[LIST1 LIST2] Return LIST1 and LIST2 concatenated together. append,extend'),
     'append': Command(2,lambda c: c[0].append(c[1]) or c[0],'Stack',
         '[LIST ITEM] Add ITEM to the end of LIST. If ITEM is a list, then it is added as a list. Use concat or extend for other options. extend,concat'),
-    #'copytop': Command(0,lambda c: list(stack[-1])),
-    # 'copytop': Command(0,lambda c: stack[-1],'Stack',
+    #'copytop': Command(0,lambda c: list(_stack[-1])),
+    # 'copytop': Command(0,lambda c: _stack[-1],'Stack',
         # 'Duplicate the top object on the stack.'),
     'clear': Command(0,lambda c: CLEAR(*c),'Stack',
         'Clear the stack.'),
@@ -3027,10 +3074,10 @@ _command_dictionary.update({
         '[LISTOFLISTS] Flatten the list of lists into a single-dimension list.'),
 
 
-    #'swap': Command(2,retNone(lambda c: stack[-1],stack[-2]=stack[-2],stack[-1])),
-    # 'pick': Command(1,lambda c: stack.insert(-int(stack[-1])-1,stack[-2]),'Stack',
-    #works: 'pick': Command(1,lambda c: stack.insert(-1,stack[len(stack)-int(c[0])-2]),'Stack',
-    'pick': Command(1,lambda c: stack.insert(-1,stack[-int(c[0])-2]),'Stack',
+    #'swap': Command(2,retNone(lambda c: _stack[-1],_stack[-2]=_stack[-2],_stack[-1])),
+    # 'pick': Command(1,lambda c: _stack.insert(-int(_stack[-1])-1,_stack[-2]),'Stack',
+    #works: 'pick': Command(1,lambda c: _stack.insert(-1,_stack[len(_stack)-int(c[0])-2]),'Stack',
+    'pick': Command(1,lambda c: _stack.insert(-1,_stack[-int(c[0])-2]),'Stack',
         '[NUMBER] Copy the value that is NUMBER of objects deep in the stack to the top of the stack. '
         '\n\tExamples:\n\t0 pick - copies the top of the stack.\n'
         '\t1 pick - pushes a copy of the second item from the top of the stack onto the top of the stack.\n'
@@ -3164,35 +3211,16 @@ _command_dictionary.update({
         'totally symmetric with the load command.'),
 
         
-    # 'vias': filter(lambda x:isinstance(x,pcbnew.VIA),_command_dictionary['tracks']),
-    # 'vias_class': filter(lambda x:pcbnew.VIA_Classof(x),_command_dictionary['tracks']),
+    # 'vias': filter(lambda x:isinstance(x,pcbnew.VIA),_dictionary['command']['tracks']),
+    # 'vias_class': filter(lambda x:pcbnew.VIA_Classof(x),_dictionary['command']['tracks']),
 })
 
-_newcommanddictionary = None
-_compile_mode = False
-def setcompilemode(val=True, dictionary='user'):
-    global _compile_mode
-    global _newcommanddictionary
-    _newcommanddictionary = dictionary
-    _compile_mode=val
+loadname = os.path.join(os.path.dirname(__file__),'kicommand_persist.commands')
+#print ('Loading from %s'%os.path.normpath(loadname))
+LOAD('kicommand_persist.commands',path=os.path.dirname(__file__))
+
+#wx.MessageDialog(None,'KiCommand commands defined.').ShowModal()
     
-"""Tracks whether compile mode is on, allowing new command definitions.
-   This is affected by the commands : and ;"""
-_command_definition = []
-_user_dictionary = _dictionary['user']
-
-_user_stacks = defaultdict(list)
-
-_user_stacks['drawparams'] = { 
-                                't':0.3*pcbnew.IU_PER_MM,
-                                'w':1*pcbnew.IU_PER_MM,
-                                'h':1*pcbnew.IU_PER_MM,
-                                'l':pcbnew.Dwgs_User, 
-                                'zt':pcbnew.ZONE_CONTAINER.NO_HATCH,
-                                'zp':0
-                             }
-                             
-#_user_stacks['Board'].append(pcbnew.GetBoard())
 
 def getBoard():
     if len(_user_stacks['Board']) == 0:
@@ -3222,10 +3250,10 @@ def print_userdict(command=None):
 # r('CLEAR MODULETEXTOBJ VALUETEXTOBJ APPEND REFERENCETEXTOBJ APPEND COPY GetTextBox CALL CORNERS SWAP COPY GetCenter CALL SWAP GetTextAngleDegrees CALL ROTATEPOINTS DRAWSEGMENTS')
 #    'not': Command(0,lambda c: kc('0 FLOAT ='),'Comparison'),
 
-#output( 'ops',str(stack))
+#output( 'ops',str(_stack))
 def printcategories():
     result=defaultdict(set)
-    for key,val in _command_dictionary.iteritems():
+    for key,val in _dictionary['command'].iteritems():
         result[val.category].add(key)
     
     for key,val in result.iteritems():
@@ -3237,7 +3265,7 @@ pshapes = ['PAD_SHAPE_CIRCLE','PAD_SHAPE_OVAL', 'PAD_SHAPE_RECT', 'PAD_SHAPE_ROU
 
 if Counter(pshapesactual) != Counter(pshapes):
     try:
-        output( 'Warning! Expected Pad Shapes are different than KiCommand expects.')
+        output( 'Warning! Expected Pad Shapes are different than KiCommand expects. KiCAD has been updated? Consider running unit tests (import kicommand.test)')
     except:
         pass
 
@@ -3338,6 +3366,6 @@ def pad_to_drawsegment(pad):
     # pass
 
 def __main__(self):
-    KiCommandAction().register()
+    KiCommandAction.getInstance().register()
 
 #wx.MessageDialog(None,'KiCommand __name__: '+__name__).ShowModal()
