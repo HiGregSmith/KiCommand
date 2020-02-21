@@ -3,9 +3,9 @@ from kicommand.kicommand import kc
 
 class TestDrawing(unittest.TestCase):
 
-    def test_showparam_drawparams(self):
-        self.assertEqual(kc('showparam'),{'h': 1000000.0, 'zp': 0, 'zt': 0, 't': 500000.0, 'w': 1000000.0, 'l': 'F.Cu'} )
-        self.assertEqual(kc('4,2,3 mm B.Cu drawparams showparam'),{'h': 3000000.0, 'zp': 0, 'zt': 0, 't': 4000000.0, 'w': 2000000.0, 'l': 'B.Cu'} )
+    def test_showparams_drawparams(self):
+        self.assertEqual(kc('showparams'),{'h': 1000000.0, 'zp': 0, 'zt': 0, 't': 500000.0, 'w': 1000000.0, 'l': 'F.Cu'} )
+        self.assertEqual(kc('4,2,3 mm B.Cu drawparams showparams'),{'h': 3000000.0, 'zp': 0, 'zt': 0, 't': 4000000.0, 'w': 2000000.0, 'l': 'B.Cu'} )
         
     # def test_drawsegments(self):
         # track = kc('clear 0.5 mm t param F.Cu l param 10,10,20,30 mm '

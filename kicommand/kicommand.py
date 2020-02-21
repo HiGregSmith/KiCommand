@@ -24,6 +24,7 @@ import math
 import re
 from textwrap import wrap
 import wx
+import operator
 
 try:
     from wxpointutil import wxPointUtil
@@ -594,6 +595,14 @@ def tosegments(*c):
                 thickness=width))
     return segments
         
+def getLayerID(layer):
+    try:
+        return getBoard().GetLayerID(str(layer))
+    except:
+        try:
+            return int(layer)
+        except:
+            raise ValueError ("Layer name or layer ID expected.")
 
 def draw_segmentlist(input, layer=pcbnew.Eco2_User, thickness=0.015*pcbnew.IU_PER_MM):
     """Draws the vector (wxPoint_vector of polygon vertices) on the given
@@ -615,10 +624,7 @@ def draw_segmentlist(input, layer=pcbnew.Eco2_User, thickness=0.015*pcbnew.IU_PE
     # list of list of numbers: multiple polylines
     # list of list of wxPoints: multple polylines
     
-    try:
-        layer = int(layer)
-    except:
-        layer = getBoard().GetLayerID(str(layer))
+    layer = getLayerID(layer)
 
     if isinstance(input,basestring):
         #input = [input.split(',')]
@@ -1014,21 +1020,54 @@ def CONNECT(dseglist):
 def is_connected(w,v):
     return wxPointUtil.distance2(w,v) < 200*200
 
+### Unfinished
+def order_segments_new(dseglist):
+    # use a distance calculation
+    seglistcopy = list(dseglist)
+    pointlist = [list(get_ds_ends(seg)) for seg in seglistcopy]
+    
+    for firstindex in range(0,len(seglistcopy)-1):
+        dstarts = [ \
+        (pointlist[firstindex][1][0]-pointlist[secondindex][0][0])**2 + \
+        (pointlist[firstindex][1][1]-pointlist[secondindex][0][1])**2 \
+        for secondindex in range(firstindex+1,len(seglistcopy))]
+        dends = [ \
+        (pointlist[firstindex][1][0]-pointlist[secondindex][1][0])**2 + \
+        (pointlist[firstindex][1][1]-pointlist[secondindex][1][1])**2 \
+        for secondindex in range(firstindex+1,len(seglistcopy))]
+        # find the closes start point, and its squared distance
+        index, value = max(enumerate(my_list), key=operator.itemgetter(1))
+# max(enumerate(pointlist),key=operator.itemgetter(
+# wxPointUtil.distance(pointlist[firstindex][1],pointlist[secondindex][0])
+# wxPointUtil.distance(pointlist[firstindex][1],pointlist[secondindex][1])
+    # print(dstarts)
+    starts = [pointlist[0][1]*pointlist[0][1]+pointlist[secondindex][0]*pointlist[secondindex][0] for secondindex in range(firstindex+1,len(seglistcopy))]
+
 def order_segments(dseglist):
     # fixed with gridboxes
     segs_by_box = defaultdict(set)
     boxes_by_seg = {}
+    dseglist = list(dseglist)
 
     for seg in dseglist:
+        # Get start end ending points in the segment
         s,e = get_ds_ends(seg)
+        # Get the gridboxes surrounding each point
         gbs = gridboxes(s)
         gbe = gridboxes(e)
+        # output(str(s)+' gbs: '+str(gbs))
+        # output(str(e)+' gbe: '+str(gbe))
         # any of the boxes points to the opposite end of the segment
+
+
+        # Create a dictionary with key of box and value of opposing endpoint
         sdict={}
         for b in gbs:
             sdict[b] = e
             # output(str(b))
             segs_by_box[b].add(seg)
+            
+        # Do the same for each endpoint -> startpoint.
         edict={}
         for b in gbe:
             # output(str(b))
@@ -1038,15 +1077,21 @@ def order_segments(dseglist):
         boxes_by_seg[seg] = {s:sdict,e:edict}
         """bbs is a structure that you can look up all the boxes the 
         opposing point of the segment exists in."""
+
     # output ('sbb keys:')
-    for box,segs in segs_by_box.iteritems():
-        seglist=list(segs)
+    # for box,segs in segs_by_box.iteritems():
+        # seglist=list(segs)
         # output(str(box),len(segs))
         # for seg in seglist:
             # output('\t',get_ds_ends(seg))
     # now create a structure where a segment points to all connected segments
     # output('sbb %s'%str(segs_by_box))
     # output('bbs %s'%str(boxes_by_seg))
+    # output('box:seglist')
+    # for b,seglist in segs_by_box.iteritems():
+        # output('({}) {}: {}'.format(len(seglist),str(b),str(seglist)))
+    # output('end box:seglist')
+    
     connected = defaultdict(set)
     for b,seglist in segs_by_box.iteritems():
         for seg1 in seglist:
@@ -1055,6 +1100,11 @@ def order_segments(dseglist):
                     # output('adding')
                     connected[seg1].add(seg2)
                     connected[seg2].add(seg1)
+                    
+    # output ('BEGIN connected set')    
+    # for seg,connectedset in connected.iteritems():    
+        # output('({}) {}: {}'.format(len(connectedset),seg,connectedset))
+    # output ('DONE connected set')    
     # output('connected:')
     # for seg,seglist in connected.iteritems():
         # output('%s'%str(get_ds_ends(seg)))
@@ -1064,22 +1114,29 @@ def order_segments(dseglist):
     for seg,seglist in connected.iteritems():
         if len(seglist) > 2:
             # doesn't capture three segments at one box/point
-            output('Error: segment connected to more than 2 other segments: %s'%
-                str(get_ds_ends(seg)))
+            output('Error: segment {} connected to more than 2 other segments: {}'.format(
+                str(get_ds_ends(seg)),', '.join(map(lambda x: str(get_ds_ends(x)),seglist))))
             return dseglist
     
     segset = set()
     ordered_and_split = [[]]
+    # organize the segments into connected lists.
+    # Make sure we consider each segment
     for seg in dseglist:
         currentseg = seg
         lastseg = seg
+        # This while loop finds all segments connected to 'seg' 
         while currentseg is not None and currentseg not in segset:
-            segset.add(currentseg)
+            segset.add(currentseg) # add current segment to those already considered.
+            # 'connected' lists all connected segments of 'currentseg'
             csegs = list(connected.get(currentseg,None))
+            # output("Length of csegs {}".format(len(csegs)))
             # csegs should be one or two segments
+            # one of those connected segments will be lastseg
             if lastseg in csegs:
                 csegs.remove(lastseg)
             # output('added to oas')
+            # add currentseg to the latest ordered_and_split list
             ordered_and_split[-1].append(currentseg)
             lc = len(csegs)            
             if lc == 0:
@@ -1089,8 +1146,20 @@ def order_segments(dseglist):
                 lastseg = currentseg
                 currentseg = csegs[0]
             else: # lc = > 1
-                output('Error: segment connected to more than 2 other segments: %s'%
-                    str(get_ds_ends(currentseg)))
+                # it's not an error if this is the first segment considered. All others should have 0 or 1 connected segments.
+                if currentseg != lastseg:
+                    output('Error: segment {} connected to more than 2 other segments: {}'.format(
+                        str(get_ds_ends(currentseg)),', '.join(map(lambda x: str(get_ds_ends(x)),csegs))))
+                # just choose the first one in the list
+                lastseg = currentseg
+                currentseg = csegs[0]
+                # output('Error: segment connected to more than 2 other segments: %s'%
+                    # str(get_ds_ends(currentseg)))
+        # try:
+            # if ordered_and_split[-1][-1] in connected(ordered_and_split[-1][0]):
+                # ordered_and_split[-1].append(ordered_and_split[-1][0])
+        # except:
+            # pass
     if not ordered_and_split[-1]:
         ordered_and_split.pop()
     return ordered_and_split
@@ -1152,8 +1221,83 @@ def order_segments_old(dseglist):
 def MAKEANGLE(dseglist,degrees):
     output('makeangle not implemented.')
     return dseglist
+
+def connected_pairs(dseglist):
+    segs_by_box = defaultdict(set)
+    boxes_by_seg = {}
+    dseglist = list(dseglist)
+
+    for seg in dseglist:
+        # Get start end ending points in the segment
+        s,e = get_ds_ends(seg)
+        # Get the gridboxes surrounding each point
+        gbs = gridboxes(s)
+        gbe = gridboxes(e)
+        # output(str(s)+' gbs: '+str(gbs))
+        # output(str(e)+' gbe: '+str(gbe))
+        # any of the boxes points to the opposite end of the segment
+
+
+        # Create a dictionary with key of box and value of opposing endpoint
+        sdict={}
+        for b in gbs:
+            sdict[b] = e
+            # output(str(b))
+            segs_by_box[b].add(seg)
+            
+        # Do the same for each endpoint -> startpoint.
+        edict={}
+        for b in gbe:
+            # output(str(b))
+            edict[b] = s
+            segs_by_box[b].add(seg)
+            
+        boxes_by_seg[seg] = {s:sdict,e:edict}
+        """bbs is a structure that you can look up all the boxes the 
+        opposing point of the segment exists in."""
+
+    # output ('sbb keys:')
+    # for box,segs in segs_by_box.iteritems():
+        # seglist=list(segs)
+        # output(str(box),len(segs))
+        # for seg in seglist:
+            # output('\t',get_ds_ends(seg))
+    # now create a structure where a segment points to all connected segments
+    # output('sbb %s'%str(segs_by_box))
+    # output('bbs %s'%str(boxes_by_seg))
+    # output('box:seglist')
+    # for b,seglist in segs_by_box.iteritems():
+        # output('({}) {}: {}'.format(len(seglist),str(b),str(seglist)))
+    # output('end box:seglist')
+    
+    connected = defaultdict(set)
+    for b,seglist in segs_by_box.iteritems():
+        for seg1 in seglist:
+            for seg2 in seglist:
+                if seg1 != seg2:
+                    # output('adding')
+                    connected[seg1].add(seg2)
+                    connected[seg2].add(seg1)
+                    
+    # output ('BEGIN connected set')    
+    # for seg,connectedset in connected.iteritems():    
+        # output('({}) {}: {}'.format(len(connectedset),seg,connectedset))
+    return connected
     
 def draw_arc_to_segments(radius,dseglist):
+    # output('len(segments)=%s'%len(dseglist))
+    done = []
+    pairs = connected_pairs(dseglist)
+    for seg, segset in pairs.iteritems():
+        for seg2 in segset:
+            s = set((seg,seg2))
+            if s not in done:
+                draw_arc_to_lines(radius[0],seg,seg2)
+                done.append(s)
+    # for ordered in orderedlol:
+        # for i in range(len(ordered)-1):
+            # draw_arc_to_lines(radius[0],ordered[i],ordered[i+1])
+def draw_arc_to_segments_old(radius,dseglist):
     # output('len(segments)=%s'%len(dseglist))
 
     orderedlol = order_segments(dseglist)
@@ -1174,7 +1318,8 @@ def ROTATE(dseglist,angle):
     angle = float(angle)
     allpoints = []
     for seg in dseglist:
-        allpoints.extend(get_ds_ends(seg))
+        #allpoints.extend(get_ds_ends(seg))
+        allpoints.append(seg.GetCenter())
     xcenter = 0
     ycenter = 0
     for p in allpoints:
@@ -1187,10 +1332,10 @@ def ROTATE(dseglist,angle):
         if shape == pcbnew.S_SEGMENT:
             seg.SetStart(pcbnew.wxPoint(*rotate_point(seg.GetStart(),center,angle,ccw=True)))
             seg.SetEnd(pcbnew.wxPoint(*rotate_point(seg.GetEnd(),center,angle,ccw=True)))
-        if shape == pcbnew.S_ARC:
-            seg.SetCenter(pcbnew.wxPoint(*rotate_point(seg.GetCenter(),center,angle,ccw=True)))
-        if shape == pcbnew.S_CIRCLE:
-            seg.SetCenter(pcbnew.wxPoint(*rotate_point(seg.GetCenter(),center,angle,ccw=True)))
+        # elif shape == pcbnew.S_CIRCLE:
+            # seg.SetCenter(pcbnew.wxPoint(*rotate_point(seg.GetCenter(),center,angle,ccw=True)))
+        else: # pcbnew.S_ARC and possibly others
+            seg.Rotate(center,angle*10.0)
         
 def lines_intersect(p,q,w,v):
     # get intersection
@@ -2297,7 +2442,7 @@ class commands:
         return map(lambda s: prog.match(s),stringlist)
 #        '=': Command(2,lambda c: map(lambda x: x==c[1],c[0]),'Comparison',
     def callargs(self,*c):
-        'Call [OBJECTLIST ARGLISTOFLISTS FUNCTION] Execute python FUNCTION on each member '
+        'Python [OBJECTLIST ARGLISTOFLISTS FUNCTION] Execute python FUNCTION on each member '
         'of OBJECTLIST with arguments in ARGLISTOFLISTS. ARGLISTOFLISTS can be '
         'a different length than OBJECTLIST, in which case ARGLISTOFLISTS '
         'elements will be repeated (or truncated) to match the length of '
@@ -2314,11 +2459,22 @@ class commands:
                 args = [args]
         else:
             args = [[args]]
-            
-        return map(lambda x: 
-            getattr(x[0],c[2])(*(x[1])), 
-            zip(c[0], cycle(args))
-            )
+
+        if len(c[0]) > args:
+            return map(lambda x: 
+                getattr(x[0],c[2])(*(x[1])), 
+                zip(c[0], cycle(args))
+                )
+        elif len(c[0]) < args:
+            return map(lambda x: 
+                getattr(x[0],c[2])(*(x[1])), 
+                zip(cycle(c[0]), args)
+                )
+        else:
+            return map(lambda x: 
+                getattr(x[0],c[2])(*(x[1])), 
+                zip(c[0], args)
+                )
 
 ################## END OF COMMANDS CLASS ###########################
             
@@ -2621,7 +2777,7 @@ def HELPCAT(category):
         #output( 'CATEGORY   -   COMMANDS IN THIS CATEGORY')
         output( '{:<{width}} - {}'.format('CATEGORY','COMMANDS IN THIS CATEGORY', width=catlen))
         for cat in sorted(cbyc.keys()):
-            output( '{:<{width}} - {}'.format(cat,' '.join(cbyc[cat]), width=catlen))
+            output( '{:<{width}} - {}'.format(cat,' '.join(sorted(cbyc[cat])), width=catlen))
         return
     # list(set(list1).intersection(list2))    
     try:
@@ -2736,36 +2892,36 @@ _dictionary['command'].update({
     # ': copytop 0 pick ;'
     
     
-    'pcbnew': Command(0,lambda c: pcbnew,'Elements',
+    'pcbnew': Command(0,lambda c: pcbnew,'Python',
         'Get the python base object for PCBNEW'),
     'getboard': Command(0,lambda c: pcbnew.GetBoard(),'Elements',
-        'Get the loaded Board object'),
+        'Get the loaded Board object (execute pcbnew.GetBoard()).'),
     # boardpush can be done with "[BOARD Object] Board spush"
     # boardpop can be done with "Board spop"
     # 'boardpush': Command(1,lambda c: _user_stacks['Board'].append(c[0]),'Elements',
         # '[BOARD] Add board to Board stack. This is the new default Board object for many commands'),
     # 'boardpop': Command(0,lambda c: _user_stacks['Board'].pop(),'Elements',
         # 'Remove last board from Board stack and place on the stack. The previous default board becomes the new default Board object for many commands'),
-    'board': Command(0,lambda c: getBoard(),'Elements',
+    'board': Command(0,lambda c: getBoard(),'ElementsCore',
         'Get the default Board object for many commands'),
-    'modules': Command(0,lambda c: getBoard().GetModules(),'Elements',
+    'modules': Command(0,lambda c: getBoard().GetModules(),'ElementsCore',
         'Get all modules of the default board'),
-    'tracks': Command(0,lambda c: getBoard().GetTracks(),'Elements',
+    'tracks': Command(0,lambda c: getBoard().GetTracks(),'ElementsCore',
         'Get all tracks (including vias) of the default board'),
-    'drawings': Command(0,lambda c: getBoard().GetDrawings(),'Elements',
+    'drawings': Command(0,lambda c: getBoard().GetDrawings(),'ElementsCore',
         'Get all top-level drawing objects (lines and text) of the default board'),
 #    'toptext': Command(0,lambda c: filter(lambda x: isinstance(x,pcbnew.EDA_TEXT),getBoard().GetDrawings()),'Elements'),
 # 'copy IsSelected call filter'
     # PCB Element Attributes
-    'selected': Command(1,lambda c: filter(lambda x: x.IsSelected(), c[0]),'Attributes',
+    'selected': Command(1,lambda c: filter(lambda x: x.IsSelected(), c[0]),'Filter',
         '[objects] Get selected objects '),
-    'notselected': Command(1,lambda c: filter(lambda x: not x.IsSelected(), c[0]),'Attributes',
+    'notselected': Command(1,lambda c: filter(lambda x: not x.IsSelected(), c[0]),'Filter',
         '[objects] Get unselected objects '),
-    'attr': Command(2,lambda c: map(lambda x: getattr(x,c[1]), c[0]),'Attributes',
+    'attr': Command(2,lambda c: map(lambda x: getattr(x,c[1]), c[0]),'Python',
         '[objects attribute] Get specified python attribute of the objects' ),
     # want this to work where c[1] is a value or list. If list, then member by member.
     #'index': Command(2,lambda c: map(lambda x: x[c[1]], c[0]),'Attributes',
-    'sindex': Command(2,lambda c: c[0][c[1]],'Attributes',
+    'sindex': Command(2,lambda c: c[0][c[1]],'Python',
        '[DICTIONARYOBJECT STRINGINDEX] Select an item in the list of objects based on string INDEX'),
 
     'index.': Command(2, lambda c: map(lambda x: x[int(c[1])],c[0]), 'Conversion',
@@ -2814,7 +2970,7 @@ _dictionary['command'].update({
     #'<': Command(2,lambda c: [c[0][i] for i,x in enumerate(c[1]) if x<float(c[2]))
     '<': Command(2,lambda c: map(lambda x: float(x)<float(c[1]),c[0]),'Comparison',
         '[LIST VALUE] Create a LIST of True/False values corresponding to whether the values in LIST are less than VALUE (for use prior to FILTER)'),
-    'filtertype': Command(2,lambda c: filter(lambda x:isinstance(x,getattr(pcbnew,c[1])),c[0]),'Comparison',
+    'filtertype': Command(2,lambda c: filter(lambda x:isinstance(x,getattr(pcbnew,c[1])),c[0]),'Filter',
         '[LIST TYPE] Retains objects in LIST that are of TYPE' ),
     'istype': Command(2,lambda c: map(lambda x:isinstance(x,getattr(pcbnew,c[1])),c[0]),'Comparison',
         '[LIST TYPE] Create a LIST of True/False values corresponding to whether '
@@ -2827,34 +2983,34 @@ _dictionary['command'].update({
     'isnotnone': Command(1,lambda c: map(lambda x: x is not None,c[0]),'Comparison',
         '[LIST VALUE] Create a LIST of True/False values corresponding to whether the values in LIST is not  None (for use prior to FILTER)'),
 #x=lambda c: map(lambda x: float(x),c.split(',')) if isinstance(c,basestring) else map(lambda x: float(x),c)
-    'undock': Command(0,lambda c: UNDOCK(*c),'Interface',
+    'undock': Command(0,lambda c: UNDOCK(*c),'System',
         'Undock the window.'),
-    'spush': Command(2,lambda c: _user_stacks[c[1]].append(c[0]),'Programming',
+    'spush': Command(2,lambda c: _user_stacks[c[1]].append(c[0]),'StackUser',
         '[STACK] [VALUE] Push VALUE onto the named STACK. spop,sdelete,scopy,scopyall'),
-    'spop': Command(1,lambda c: _user_stacks[c[0]].pop() if len(_user_stacks[c[0]])>1 else _user_stacks[c[0]],'Programming',
+    'spop': Command(1,lambda c: _user_stacks[c[0]].pop() if len(_user_stacks[c[0]])>1 else _user_stacks[c[0]],'StackUser',
         '[STACK] Pop the top of the user STACK onto the main stack only if stack contains more than 1 item. spush,sdelete,scopy,scopyall'),
-    'sdelete': Command(1,lambda c: _user_stacks.pop([c[0]],None) and None,'Programming',
+    'sdelete': Command(1,lambda c: _user_stacks.pop([c[0]],None) and None,'StackUser',
         '[STACK] Delete the user stack. spush,spop,scopy,scopyall'),
-    'scopy': Command(1,lambda c: _user_stacks[c[0]][-1],'Programming',
+    'scopy': Command(1,lambda c: _user_stacks[c[0]][-1],'StackUser',
         '[STACK] Copy the top of the user STACK onto the main stack. spush,spop,sdelete,scopyall'),
-    'scopyall': Command(1,lambda c: _user_stacks[c[0]],'Programming',
+    'scopyall': Command(1,lambda c: _user_stacks[c[0]],'StackUser',
         '[STACK] Copy the entire user STACK as a list onto the main stack. spush,sdelete,scopy,spop'),
-    'stack': Command(0,lambda c: STACK(*c),'Programming',
+    'stack': Command(0,lambda c: STACK(*c),'Output',
         'Output the string representation of the objects on the stack'),
-    'print': Command(0,lambda c: PRINT(*c),'Programming',
+    'print': Command(0,lambda c: PRINT(*c),'Output',
         'Output the string representation of the top object on the stack'),
-    'builtins': Command(0,lambda c:  __builtins__,'Programming',
+    'builtins': Command(0,lambda c:  __builtins__,'Programming,Python',
         """Output the __builtins__ Python object, giving access to the built in Python functions.\nExample: builtins pow sindex list 2,3 float list fcallargs sindex,fcallargs"""),
     
-    # 'getstart': Command(1,lambda c: [m.GetStart() for m in c[0]],'Call',
+    # 'getstart': Command(1,lambda c: [m.GetStart() for m in c[0]],'Python',
         # '[LIST] Get the start wxPoint from the LIST of DRAWSEGMENTS.'),
-    # 'getend': Command(1,lambda c: [m.GetEnd() for m in c[0]],'Call',
+    # 'getend': Command(1,lambda c: [m.GetEnd() for m in c[0]],'Python',
         # '[LIST] Get the end wxPoint from the LIST of DRAWSEGMENTS.'),
-    'calllist': Command(2,lambda c: CALLLIST(*c),'Call',
+    'calllist': Command(2,lambda c: CALLLIST(*c),'Python',
         '[LIST FUNCTION] Execute python FUNCTION on each member of LIST.'
         'The FUNCTION must return a list of items (this is suitable'
         'for module functions such as GraphicalItems and Pads.'),
-    'fcall': Command(1,lambda c: map(lambda x: x(), c[0]),'Call',
+    'fcall': Command(1,lambda c: map(lambda x: x(), c[0]),'Python',
         '[FUNCTIONLIST] Execute each python function in the FUNCTIONLIST on each member of LIST. Return the list of results in the same order as the original LIST.'),
     'fcallargs': Command(2,
                 lambda c: 
@@ -2862,7 +3018,7 @@ _dictionary['command'].update({
                         x[0](*(x[1])), 
                         zip(c[0], cycle(c[1]))
                    )
-                ,'Call',
+                ,'Python',
         '[FUNCTIONLIST ARGLISTOFLISTS] Execute each python function in the'
         'FUNCTIONLIST on each member of that list with arguments in ARGLISTOFLISTS.' 'ARGLISTOFLISTS can be '
         'a different length than OBJECTLIST, in which case ARGLISTOFLISTS '
@@ -2877,11 +3033,11 @@ _dictionary['command'].update({
         # map(lambda x: getattr(x,c[1])(), [c[0]])
         # if hasattr(c[0],'__getitem__') else  
         # map(lambda x: getattr(x,c[1])(), [[c[0]]])
-        ,'Call',
+        ,'Python',
         '[LIST FUNCTION] Execute python FUNCTION on each member of LIST. Return the list of results in the same order as the original LIST.'),
-    'callfilter': Command(2,lambda c: filter(lambda x: getattr(x,c[1])(), c[0]),'Call',
+    'callfilter': Command(2,lambda c: filter(lambda x: getattr(x,c[1])(), c[0]),'Python',
         '[LIST FUNCTION] Execute python FUNCTION on each member of LIST. Return results that return True.'),
-    'callnotfilter': Command(2,lambda c: filter(lambda x: not getattr(x,c[1])(), c[0]),'Call',
+    'callnotfilter': Command(2,lambda c: filter(lambda x: not getattr(x,c[1])(), c[0]),'Python',
         '[LIST FUNCTION] Execute python FUNCTION on each member of LIST. Return results that return False.'),
     # 'callargs': Command(3,
                 # lambda c: 
@@ -2889,7 +3045,7 @@ _dictionary['command'].update({
                         # getattr(x[0],c[2])(*(x[1])), 
                         # zip(c[0], cycle(c[1]))
                    # )
-                # ,'Call',
+                # ,'Python',
                 # #        zip(c[0],c[1][0:len(c[0])])
                 # # itertools.zip(c[0], itertools.cycle(c[1]))
                 # #list(itertools.zip([1,2,3], itertools.cycle([4,5])))
@@ -3068,6 +3224,8 @@ _dictionary['command'].update({
         '[ITERABLE] Make list from ITERABLE where each item is a member of ITERABLE.'),
     'list': Command(1,lambda c: [c[0]],'Conversion',
         '[OBJECT] Make OBJECT into a list (with only OBJECT in it).'),
+    'list.': Command(1,lambda c: map(lambda x: [x],c[0]),'Conversion',
+        '[LIST] Make each member of LIST into a list (with only that member in it).'),
     'delist': Command(1,lambda c: c[0][0],'Conversion',
         '[LIST] Output index 0 of LIST.'),
     'flatlist': Command(1,lambda c: [item for sublist in c[0] for item in sublist],'Conversion',
@@ -3181,7 +3339,7 @@ _dictionary['command'].update({
     'drawparams': Command(2,lambda c: DRAWPARAMS(c),'Draw',
         '[THICKNESS,WIDTH,HEIGHT LAYER] Set drawing parameters for future draw commands.\n'
         'Example: 1,5,5 mm F.Fab drawparams'),
-    'showparam': Command(0,lambda c: _user_stacks['drawparams'],'Draw',
+    'showparams': Command(0,lambda c: _user_stacks['drawparams'],'Draw',
         'Return the draw parameters.'),
     'findnet': Command(1,lambda c: FINDNET(*c),'Draw','[NETNAME] Returns the netcode of NETNAME.'),
     'param': Command(2,lambda c: PARAM(*c),'Draw',

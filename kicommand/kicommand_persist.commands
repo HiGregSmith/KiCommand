@@ -1,4 +1,4 @@
-:persist wxpoint "Geometry [X,Y] Create a  wxpoint" pcbnew list swap list wxPoint callargs ;
+:persist wxpoint "Conversion [X,Y] Create a  wxpoint" pcbnew list swap list wxPoint callargs ;
 :persist toptextobj "Elements Get the top level text objects." drawings EDA_TEXT filtertype ;
 :persist valuetextobj "Elements Get all module's Value text objects." modules Value call ;
 :persist referencetextobj "Elements Get all module's Reference text objects." modules Reference call ;
