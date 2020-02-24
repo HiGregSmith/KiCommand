@@ -30,13 +30,13 @@ class TestBoardClass(unittest.TestCase):
         self.COMMENT1="For load/save test"
         self.FILENAME=tempfile.mktemp()+".kicad_pcb"
 
-    def test_pcbfindmodule(self):
+    def test_PCBFindmodule_call_callargs(self):
         reference = kc('board list P1 list list FindModule callargs GetReference call delist')
         self.assertEqual(reference,'P1')
         # module = self.pcb.FindModule('P1')
         # self.assertEqual(module.GetReference(),'P1')
 
-    def test_pcbgettrackcount(self):
+    def test_PCBGettrackcount(self):
     # :persist newboard "Elements Create a new empty board and make it the current board." pcbnew list BOARD call delist Board spush ;
     # : newtrack "Elements Create bare, undefined track on current board" pcbnew list board list list TRACK callargs board list swap list Add callargs ;
     
@@ -76,7 +76,7 @@ class TestBoardClass(unittest.TestCase):
         # pcb.Add(track1)
         # self.assertEqual(pcb.GetNumSegmTrack(),2)
 
-    def test_pcbboundingbox(self):
+    def test_PCBBoundingbox_param(self):
         kc(':persist newboard "Elements Create a new empty board and make it the current board." pcbnew list BOARD call delist Board spush ;')
         # create new board
         pcb = kc('clear newboard board')
@@ -124,7 +124,7 @@ class TestBoardClass(unittest.TestCase):
         self.assertAlmostEqual(width,  (30-10) + 0.5 + clearance, 2)
         self.assertAlmostEqual(height, (20-10) + 0.5 + clearance, 2)
 
-    def test_pcbgetpad(self):
+    def test_PCBGetpad(self):
         pcb = kc('newboard board')
         # pcb = BOARD()
 
@@ -166,7 +166,7 @@ class TestBoardClass(unittest.TestCase):
         # self.assertIsNotNone(p3,msg="Pad not found from bottom point")
         # self.assertEqual(pad.this, p3.this)
 
-    def test_pcbsaveandload(self):
+    def test_PCBSaveandload(self):
         pcb = BOARD()
         pcb.GetTitleBlock().SetTitle(self.TITLE)
         pcb.GetTitleBlock().SetComment1(self.COMMENT1)
@@ -182,18 +182,18 @@ class TestBoardClass(unittest.TestCase):
 
         os.remove(self.FILENAME)
 
-    def test_pcblayernamesetget(self):
+    def test_PCBLayernamesetget(self):
         pcb = kc('newboard board list 31 int list %s list concat list SetLayerName callargs board'%BACK_COPPER)
         # pcb = BOARD()
         # pcb.SetLayerName(31, BACK_COPPER)
         self.assertEqual(pcb.GetLayerName(31), BACK_COPPER)
 
-    def test_pcblayernamesetget2(self):
+    def test_PCBLayernamesetget2(self):
         pcb = BOARD()
         pcb.SetLayerName(31, BACK_COPPER)
         self.assertEqual(pcb.GetLayerName(31), BACK_COPPER)
 
-    def test_pcblayeridget(self):
+    def test_PCBLayerIDget(self):
         # pcb = BOARD()
         pcb = kc('newboard board')
         b_cu_id = kc('%s layernums delist'%B_CU)

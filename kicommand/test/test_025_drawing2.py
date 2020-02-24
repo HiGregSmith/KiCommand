@@ -9,7 +9,7 @@ class TestDrawing2(unittest.TestCase):
         # # track = kc('clear 0.5 mm t param F.Cu l param 10,10,20,30 mm '
                         # # 'drawsegments delist delist')
 
-    def test_rotate_round(self):        
+    def test_rotate_round_flatlist_select_selected(self):        
         kc(': dim "Elements Get width, height, x, y of the board" board list GetBoundingBox call copy copy copy GetWidth call swap GetHeight call extend swap GetCenter call flatlist extend -2 roundn int ;') # we don't care about differences less than 100nm
         kc(': tomm "Conversion [LIST] Convert nm to mm" 1 1 mm / list *. ;')
         kc('newboard')
@@ -29,7 +29,10 @@ class TestDrawing2(unittest.TestCase):
         self.assertEqual(kc('drawings 90 rotate dim'),[14000000, 14000000, 10666700, 5000000] )
         self.assertEqual(kc('drawings 45 rotate dim'),[10656900, 18142100, 8511800, 2166700] )
         self.assertEqual(kc('drawings 45 rotate dim'),[14000000, 14000000, 10666700, -666700] )
-        self.assertEqual(kc('drawings 180 rotate dim'),[14000000, 14000000, 5000000, 5000000] )        
+        self.assertEqual(kc('drawings 180 rotate dim'),[14000000, 14000000, 5000000, 5000000] )
+        self.assertEqual(kc('drawings selected len'),0 )        
+        self.assertEqual(kc('drawings select drawings len list drawings selected len append'),[3,3] )        
+        self.assertEqual(kc('drawings selected length -2 roundn int'),[1414200, 9000000, 9000000] )        
    
     def test_layernums(self):
         self.maxDiff = None

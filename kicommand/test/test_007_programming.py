@@ -18,6 +18,13 @@ class TestProgramming(unittest.TestCase):
     def test_ilist(self):
         self.assertEqual(kc('1,2,3,4 int ilist'),[1, 2, 3, 4])
         self.assertEqual(kc('asdf ilist'),[u'a', u's', u'd', u'f'])
+    def test_Equals_LessThan(self):
+        self.assertFalse(kc('1 2 = delist'))
+        self.assertTrue(kc('1 1 = delist'))
+        self.assertFalse(kc('3 2 < delist'))
+        self.assertFalse(kc('2 2 < delist'))
+        self.assertTrue(kc('1 2 < delist'))
+        
 
     def test_builtins_sindex_fcallargs(self):
         self.assertEqual(kc('builtins pow sindex list 2,3 float list fcallargs'),[8.0])

@@ -568,10 +568,7 @@ def SWAP():
 def tosegments(*c):
     tracklist,layer = c
     #print('tracklist: ',tracklist)
-    try:
-        layerID = int(layer)
-    except:
-        layerID = getBoard().GetLayerID(str(layer))
+    layerID = getLayerID(layer)
         
     segments = []
     for tlist in tracklist:
@@ -596,13 +593,19 @@ def tosegments(*c):
     return segments
         
 def getLayerID(layer):
+    if isinstance(layer,int):
+        return layer
     try:
-        return getBoard().GetLayerID(str(layer))
+        layerID = getBoard().GetLayerID(str(layer))
+        if layerID != -1:
+            return layerID
     except:
-        try:
-            return int(layer)
-        except:
-            raise ValueError ("Layer name or layer ID expected.")
+        pass
+
+    try:
+        return int(layer)
+    except:
+        raise ValueError ("Layer name or layer ID expected.")
 
 def draw_segmentlist(input, layer=pcbnew.Eco2_User, thickness=0.015*pcbnew.IU_PER_MM):
     """Draws the vector (wxPoint_vector of polygon vertices) on the given
@@ -722,7 +725,7 @@ def drawlistofpolylines(input_lop,layer,thickness):
             s = numbers[i]
             e = numbers[i+1]
 
-            if not isinstance(numbers[i],pcbnew.wxPoint) or not isinstance(numbers[i],pcbnew.wxPoint):
+            if not isinstance(numbers[i],pcbnew.wxPoint): # or not isinstance(numbers[i],pcbnew.wxPoint):
                 try:
                     s = pcbnew.wxPoint(numbers[i][0],numbers[i][1])
                     e = pcbnew.wxPoint(numbers[i+1][0],numbers[i+1][1])
@@ -1661,6 +1664,7 @@ def draw_arc(x1,y1,x2,y2,angle,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_P
     """Point 1 is start, point 2 is center. Draws the arc indicated by the x,y values
     on the given layer and with the given thickness."""
     board = getBoard()
+    layer = getLayerID(layer)
     ds=pcbnew.DRAWSEGMENT(board)
     ds.SetShape(pcbnew.S_ARC)
     ds.SetLayer(layer)
@@ -1686,6 +1690,7 @@ def draw_arc(x1,y1,x2,y2,angle,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_P
 def draw_segment(x1,y1,x2,y2,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER_MM):
     """Draws the line segment indicated by the x,y values
     on the given layer and with the given thickness."""
+    layer = getLayerID(layer)
     board = getBoard()
     ds=pcbnew.DRAWSEGMENT(board)
     board.Add(ds)
@@ -1698,6 +1703,7 @@ def draw_segment(x1,y1,x2,y2,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER
 def draw_segmentwx(startwxpoint,endwxpoint,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER_MM):
     """Draws the line segment indicated by the x,y values
     on the given layer and with the given thickness."""
+    layer = getLayerID(layer)
     board = getBoard()
     if pcbnew.IsCopperLayer(layer):
         ds=pcbnew.TRACK(board)
@@ -1711,11 +1717,11 @@ def draw_segmentwx(startwxpoint,endwxpoint,layer=pcbnew.Dwgs_User,thickness=0.15
     ds.SetWidth(max(1,int(thickness)))
     return ds
 
-def layer(layer):
-    try:
-        return int(layer)
-    except:
-        return getBoard().GetLayerID(layer)
+# def layer(layer):
+    # try:
+        # return int(layer)
+    # except:
+        # return getBoard().GetLayerID(layer)
     
 def draw_text(text,pos,size,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER_MM):
     """Draws the line segment indicated by the x,y values
@@ -1728,10 +1734,7 @@ def draw_text(text,pos,size,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER_
     pos = pcbnew.wxPoint(pos[0],pos[1])
     board = getBoard()
     thickness = int(thickness)
-    try:
-        layer = int(layer)
-    except:
-        layer = board.GetLayerID(layer)
+    layer = getLayerID(layer)
     
     #ds=pcbnew.DRAWSEGMENT(board)
     ds=pcbnew.TEXTE_PCB(board)
@@ -2058,10 +2061,7 @@ def DRAWPARAMS(dims,layer):
     t,w,h = dims.split(',') if isinstance(dims,basestring) else dims \
     if hasattr(dims,'__iter__') else [dims]
 
-    try:
-        layerID = int(layer)
-    except:
-        layerID = getBoard().GetLayerID(str(layer))
+    layerID = getLayerID(layer)
 
     _user_stacks['drawparams'] = [t,w,h,layerID]
 
@@ -2572,10 +2572,7 @@ def REMOVE(items):
 def TOCOPPER(*c):
     objects,layer = c
     board = getBoard()
-    try:
-        layerID = int(layer)
-    except:
-        layerID = board.GetLayerID(str(layer))
+    layerID = getLayerID(layer)
         
     for object in objects:
         track = pcbnew.TRACK(board)
@@ -3279,12 +3276,12 @@ _dictionary['command'].update({
     'tocopper': Command(2,lambda c: TOCOPPER(*c),'Layer',
         "[DRAWSEGMENTLIST LAYER] put each DRAWSEGMENT on the copper LAYER."),
     
-    'layernums': Command(1,lambda c: [getBoard().GetLayerID(x) for x in c[0].split(',')],'Layer',
+    'layernums': Command(1,lambda c: [getLayerID(x) for x in c[0].split(',')],'Layer',
         '[STRING] Get the layer numbers for each layer in comma separated STRING. '
         'STRING can also be one number, if desired.'),
     'onlayers':  Command(2,lambda c: filter(lambda x: set(x.GetLayerSet().Seq()).intersection(set(c[1])),c[0]),'Layer',
-        '[LIST LAYERS] Retains the objects in LIST that exist on any of the LAYERS.'),
-    'setlayer': Command(2,lambda c: map(lambda x: x.SetLayer(layer(c[1])),
+        '[LIST LAYERIDS] Retains the objects in LIST that exist on any of the integer LAYERIDS. ,layernums'),
+    'setlayer': Command(2,lambda c: map(lambda x: x.SetLayer(getLayerID(c[1])),
                           c[0] if hasattr(c[0],'__iter__') else list(c[0])), 'Layer',
         '[OBJECTS LAYER] Moves all OBJECTS to LAYER.'),
     'pop': Command(1,lambda c: None,'Stack',
@@ -3443,12 +3440,8 @@ def pad_to_drawsegment(pad):
     ds=pcbnew.DRAWSEGMENT(board)
     board.Add(ds)
     layer = _user_stacks['drawparams']['l']
-    try:
-        layerID = int(layer)
-    except:
-        layerID = getBoard().GetLayerID(str(layer))
 
-    ds.SetLayer(layerID) # TODO: Set layer number from string
+    ds.SetLayer(getLayerID(layer)) # TODO: Set layer number from string
     ds.SetWidth(max(1,int(_user_stacks['drawparams']['t'])))
 
     if pad.GetShape() in [pcbnew.PAD_SHAPE_RECT,

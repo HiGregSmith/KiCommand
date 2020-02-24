@@ -7,7 +7,7 @@ KICAD_INSTALL = os.path.dirname(os.path.dirname(os.path.abspath(sys.executable))
 
 class TestBoardClass(unittest.TestCase):
 
-    def test_DemoboardValues(self):
+    def test_DemoboardValues_pads_tracks_filter_getbottomrowcounts(self):
         self.maxDiff = None
         demodirectory = os.path.join(KICAD_INSTALL,'share','kicad','demos')
         demoboards = []
