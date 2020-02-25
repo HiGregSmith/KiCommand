@@ -445,7 +445,6 @@ def kc(commandstring,returnval=0):
             if not found:
                 _stack.append(command)
             
-            
         if len(_stack):
             output( len(_stack), 'operands left on the stack.' )
         try:
@@ -2409,11 +2408,11 @@ class commands:
         
         
         for item in arglist[0][0]:
-            print ("item:",item)
+            #print ("item:",item)
             output(arglist[0][1].format(*item))
             
     def fprintf(self, *arglist):
-        'Output [LISTOFLISTS FORMAT FILENAME] Output to FILENAME each list within LISTOFLISTS formatted according to FORMAT in Pythons {} string format (https://www.python.org/dev/peps/pep-3101/).'
+        "Output [LISTOFLISTS FORMAT FILENAME] Output to FILENAME each list within LISTOFLISTS formatted according to FORMAT in Python's {} string format (https://www.python.org/dev/peps/pep-3101/)."
         arglist = arglist[0]
         #print('Format:',arglist[1])
         filename = os.path.join(os.getcwd(),arglist[2])
@@ -2421,7 +2420,13 @@ class commands:
             for item in arglist[0]:
                 #print("item:",item)
                 f.write(arglist[1].format(*item))
-        
+
+    def escaped(self,encoded_string):
+        "Conversion [ESCAPED_STRING] Interpret escaped string according to Python escape rules."
+        if sys.version_info >= (3,):
+            return bytes(encoded_string[0], "utf-8").decode("unicode_escape") # python3 
+        else:
+            return encoded_string[0].decode('string_escape') # python2
     def pwd(self,empty):
         "Programming Return the present working directory."
         return os.getcwd()
@@ -2723,7 +2728,7 @@ def print_command_detail(command):
     if helptext:
         seealso = v.helptext.split()[-1].split(',')
     if len(seealso) > 1:
-        seealso = '\n\n\tSEE ALSO: {}'.format(', '.join(seealso))
+        seealso = '\n\n\tSEE ALSO: {}'.format(', '.join([x for x in seealso if x]))
         helptext = helptext[0:helptext.rindex(' ')]
     else:
         seealso = ''
@@ -3246,7 +3251,7 @@ _dictionary['command'].update({
         'Switches the two top objects on the stack.'),
     'zip2': Command(2,lambda c: zip(*c),'Stack',
         '[LIST1 LIST2] Creates a list with parallel objects in LIST1 and '
-        'LIST2 together at the same index. ,zip'),
+        'LIST2 together at the same index. zip,'),
     'zip': Command(1,lambda c: zip(*c[0]),'Stack',
         '[LISTOFLISTS] Creates a list with parallel objects formed by each list '
         'in LISTOFLISTS ((1,2,3)(4,5,6)(7,8,9)) -> ((1,4,7)(2,5,8)(3,6,9)). ,zip2'

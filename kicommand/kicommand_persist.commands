@@ -66,9 +66,10 @@
 :persist valobj "Elements [MODULELIST] Return the Value objects of the modules. valobj,textfromobjobj" Value call ;
 :persist setvisible "Elements [OBJECTLIST] Set the objects to visible." true SetVisible callargs pop ;
 :persist clearvisible "Elements [OBJECTLIST] Set the objects to invisible." false SetVisible callargs pop ;
-:persist getnetcodefromname "Elements [NAMELISTOFLISTS] get netcodes from netnames i.e. GND list list. setnetcode,setnetname,getallnetnames" board list swap GetNetcodeFromNetname callargs ;
+:persist refresh "System Refresh the display so that new elements will show up in the GUI. This also has the side effect of deselecting all items." pcbnew Refresh call ;
+:persist getnetcodefromname "Elements [NAMELISTOFLISTS] get netcodes from netnames i.e. 'GND split list'. setnetcode,setnetname,getallnetnames" board list swap GetNetcodeFromNetname callargs ;
 :persist setnetcode "Elements [TRACKLIST NETCODELIST] set netcodes of tracks. getnetcodefromname,setnetname,getallnetnames" SetNetCode callargs ;
 :persist setnetname "Elements [TRACKLIST NAMELISTOFLISTS] set netnames of tracks. getnetcodefromname,setnetcode,getallnetnames" getnetcodefromname setnetcode ;
-:persist getallnetnames "Elements Get a list of all the net names on the current board. getnetcodefromname,setnetcode,setnetname" board list GetNetsByName call delist ilist ;
+:persist getallnetnames "Elements Get a list of all the net names on the current board. getnetcodefromname,setnetcode,setnetname" board GetNetsByName call  __str__ call  ;
 :persist loadboard "Board [FILENAME] load board into pcbnew UI." list list pcbnew list swap LoadBoard callargs delist Board spush ;
 :persist getbottomrowcounts "Elements From the default board, get the Pads, Vias, TrackSegments, Nodes, and Nets numbers listed at the bottom of the pcbnew window" board list GetNodesCount call pads len list tracks ilist copy len swap copy VIA istype filter len swap 1 pick - int swap list swap extend extend getallnetnames len 1 - int 1 pick 3 pick extend swap extend swap pop swap pop print ;
