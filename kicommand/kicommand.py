@@ -2974,20 +2974,22 @@ _dictionary['command'].update({
     'scopyall': Command(1,lambda c: _user_stacks[c[0]],'StackUser',
         '[STACK] Copy the entire user STACK as a list onto the main stack. spush,sdelete,scopy,spop'),
     'stack': Command(0,lambda c: STACK(*c),'Output',
-        'Output the string representation of the objects on the stack'),
+        'Output the string representation of each object on the stack'),
     'print': Command(0,lambda c: PRINT(*c),'Output',
         'Output the string representation of the top object on the stack'),
     'builtins': Command(0,lambda c:  __builtins__,'Programming,Python',
-        """Output the __builtins__ Python object, giving access to the built in Python functions.\nExample: builtins pow sindex list 2,3 float list fcallargs sindex,fcallargs"""),
+        """Output the __builtins__ Python object, giving access to the built in Python functions.\n
+        Example: builtins pow sindex list 2,3 float list fcallargs sindex,fcallargs"""),
     
     # 'getstart': Command(1,lambda c: [m.GetStart() for m in c[0]],'Python',
         # '[LIST] Get the start wxPoint from the LIST of DRAWSEGMENTS.'),
     # 'getend': Command(1,lambda c: [m.GetEnd() for m in c[0]],'Python',
         # '[LIST] Get the end wxPoint from the LIST of DRAWSEGMENTS.'),
     'calllist': Command(2,lambda c: CALLLIST(*c),'Python',
-        '[LIST FUNCTION] Execute python FUNCTION on each member of LIST.'
-        'The FUNCTION must return a list of items (this is suitable'
-        'for module functions such as GraphicalItems and Pads.'),
+        '[LIST FUNCTION] Execute python FUNCTION on each member of LIST. '
+        'The FUNCTION must return a list of items (this is suitable '
+        'for module functions such as GraphicalItems and Pads. '
+        'This is similar to call followed by flatlist. call,flatlist') ,
     'fcall': Command(1,lambda c: map(lambda x: x(), c[0]),'Python',
         '[FUNCTIONLIST] Execute each python function in the FUNCTIONLIST on each member of LIST. Return the list of results in the same order as the original LIST.'),
     'fcallargs': Command(2,
@@ -3257,7 +3259,7 @@ _dictionary['command'].update({
         '[POINTS CENTER DEGREES] Rotate POINTS around CENTER. POINTS can be in '
         'multiple formats such as EDA_RECT or a list of one or more points.'),
     'rotate': Command(2,lambda c: ROTATE(*c),'Geometry',
-        '[SEGMENTLIST DEGREES] Rotate segments by DEGREES around calculated '
+        '[SEGMENTLIST DEGREES] Rotate segments by DEGREES around the calculated '
         'average center.'),
         
     'corners': Command(1,lambda c: CORNERS(*c),'Geometry',
@@ -3286,7 +3288,7 @@ _dictionary['command'].update({
         '[COMMAND] Shows all previously-defined COMMANDs from the user dictionary. '
         'See the colon (:) command for more information.'),
     'now': Command(0,lambda c: time.asctime(),'System',
-        'Returns the current system time as a string.'),
+        'Returns the current system time as a string. Suitable for timestamping a pcb when converted to a text object.'),
     # 'createtext': Command(2,lambda c: )
     #def draw_arc(x1,y1,x2,y2,radius,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER_MM):
 

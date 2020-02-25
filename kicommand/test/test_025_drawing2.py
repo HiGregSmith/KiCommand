@@ -9,7 +9,7 @@ class TestDrawing2(unittest.TestCase):
         # # track = kc('clear 0.5 mm t param F.Cu l param 10,10,20,30 mm '
                         # # 'drawsegments delist delist')
 
-    def test_rotate_round_flatlist_select_selected(self):        
+    def test_rotate_round_flatlist_select_selected_drawings(self):        
         kc(': dim "Elements Get width, height, x, y of the board" board list GetBoundingBox call copy copy copy GetWidth call swap GetHeight call extend swap GetCenter call flatlist extend -2 roundn int ;') # we don't care about differences less than 100nm
         kc(': tomm "Conversion [LIST] Convert nm to mm" 1 1 mm / list *. ;')
         kc('newboard')
@@ -23,7 +23,6 @@ class TestDrawing2(unittest.TestCase):
         self.assertEqual(kc('drawings 180 rotate dim'),[14000000,4000000,5000000,0])
         self.assertEqual(kc('clear 10,0,10,10 mm list drawsegments dim'),[14000000, 14000000, 5000000, 5000000] )
         self.assertEqual(kc('drawings len'),2)
-
         self.assertEqual(kc('drawings 1 mm list swap round dim'),[14000000, 14000000, 5000000, 5000000] )
         self.assertEqual(kc('drawings len'),3)
         self.assertEqual(kc('drawings 90 rotate dim'),[14000000, 14000000, 10666700, 5000000] )
@@ -33,6 +32,8 @@ class TestDrawing2(unittest.TestCase):
         self.assertEqual(kc('drawings selected len'),0 )        
         self.assertEqual(kc('drawings select drawings len list drawings selected len append'),[3,3] )        
         self.assertEqual(kc('drawings selected length -2 roundn int'),[1414200, 9000000, 9000000] )        
+    def test_ends_delist_flatlist_drawsegments_mm_extend(self):        
+        self.assertEqual(kc('clear 0,0,10,0 mm drawsegments delist 10,0,10,10 mm drawsegments delist extend ends flatlist flatlist'),[0, 0, 10000000, 0, 10000000, 0, 10000000, 10000000] )
    
     def test_layernums(self):
         self.maxDiff = None
