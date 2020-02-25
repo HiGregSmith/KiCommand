@@ -2116,7 +2116,7 @@ def FINDNET(netname):
 class commands:
     classinstance = None
     def NEWNET(self,netname):
-        """Create a new net with name netname."""
+        """Draw [NETNAME] Create a new net with name netname."""
 
         board = getBoard() 
 
@@ -2133,54 +2133,40 @@ class commands:
         #print(netinfo.GetNet())
         #Assign net to a certain track:
         #track.SetNetCode(netinfo.GetNet())
-    NEWNET.nargs = 1
-    NEWNET.category = 'Draw'
     
     def getpads(self,items):
-        """[MODULES] Get pads of each module in MODULES."""
+        """Elements [MODULES] Get pads of each module in MODULES."""
         items = items[0]
         p = []
         for i in items:
             p.extend(list(i.Pads()))
         return p            
-    getpads.nargs = 1
-    getpads.category = 'Elements'
     
     def select(self,items):
-        '[objects] Select the objects'
+        'Action [OBJECTLIST] Select the objects'
         filter(lambda x: x.SetSelected(), items[0])
-    select.nargs = 1
-    select.category = 'Action'
     
     def deselect(self,items):
-        '[objects] Deselect the objects'
+        'Action [OBJECTLIST] Deselect the objects'
         filter(lambda x: x.ClearSelected(), items[0])
-    deselect.nargs = 1
-    deselect.category = 'Action'
     
     def pads(self,empty):
-        """Get all pads"""
+        """Elements Get all pads"""
         p=[]
         for m in getBoard().GetModules():
             p.extend(list(m.Pads()))
         return p
-    pads.nargs = 0
-    pads.category = 'Elements'
     
     def AREAS(self,empty):
-        """Return all Areas of the board (includes Zones and Keepouts)."""
+        """Elements,Area Return all Areas of the board (includes Zones and Keepouts)."""
         b = getBoard()
         return [b.GetArea(i) for i in range(b.GetAreaCount())]
         
-    AREAS.nargs = 0
-    AREAS.category = 'Elements,Area'
-
     def ZONES(self,ignore):
-        """Return all Zones of the board."""
+        """Elements,Area Return all Zones of the board."""
         b = getBoard()
         return filter(lambda c: not c.IsKeepout(),[b.GetArea(i) for i in range(b.GetAreaCount())])
-    ZONES.nargs = 0
-    ZONES.category = 'Elements,Area'
+
     # Example: clear toptextobj selected copy GetThickness call list swap topoints pairwise F.SilkS tosegments copy 2 pick SetWidth callargs pop F.Cu tocopper
     # : texttosegments "Draw [TEXTOBJLIST LAYER] Copies text objects in TEXTOBJLIST to LAYER." swap copy GetThickness call list swap topoints pairwise swap tosegments copy 2 pick SetWidth callargs pop ;
     
@@ -2189,7 +2175,7 @@ class commands:
     
     # Usage: clear toptextobj selected Dwgs.User texttosegments F.Cu tocopper
     def TOPOINTS(self,itemlist):
-        """[EDA_TEXTLIST] a list of EDA_TEXT items, which are converted to point pairs suitable for TODRAWSEGMENTS"""
+        """Draw,Geometry [EDA_TEXTLIST] a list of EDA_TEXT items, which are converted to point pairs suitable for TODRAWSEGMENTS"""
         #print('itemlist: ',itemlist)
         # if not (hasattr(itemlist, '__getitem__') or hasattr(itemlist, '__iter__')):
             # #print('making into list')
@@ -2213,42 +2199,35 @@ class commands:
                 #print(t.GetText(), orientation)
                 strokes[-1] = self.get_rotated_vector(strokes[-1],t.GetCenter(),orientation)
         return strokes
-    TOPOINTS.nargs = 1
-    TOPOINTS.category = 'Draw,Geometry'
     
     def pairwise(self,iterable):
-        "[LISTOFLISTS] [s] -> [[s0, s1], [s2, s3], [s4, s5], ...]"
+        "Conversion [LISTOFLISTS] [s] -> [[s0, s1], [s2, s3], [s4, s5], ...]"
         valuelist = []
         #print('iterable: ',iterable)
         for item in iterable[0]:
             a = iter(item)
             valuelist.append(list(zip(a, a)))
         return valuelist
-    pairwise.nargs = 1
-    pairwise.category = 'Conversion'
     
     def KEEPOUTS(self,empty):
-        """Return all Keepouts of the board."""
+        """Elements,Area Return all Keepouts of the board."""
         b = getBoard()
         return filter(lambda c: c.IsKeepout(),[b.GetArea(i) for i in range(b.GetAreaCount())])
-    KEEPOUTS.nargs = 0
-    KEEPOUTS.category = 'Elements,Area'
     
     def AREACORNERS(self,arealist):
-        """Area Corners."""
+        """Geometry,Area [AREALIST] Get AREALIST corners."""
         b=getBoard()
         areacorners = [[a.GetCornerPosition(i) 
             for i in range(a.GetNumCorners())] 
                 for a in arealist[0]]
         return areacorners
-    AREACORNERS.nargs = 1
-    AREACORNERS.category = 'Geometry,Area'
+
     # Test:
     # "m 81.38357,74.230848 5.612659,1.870887 5.211757,3.474503 2.138156,2.138157 10.958048,-6.1472 0.53454,5.078121 -1.06908,4.009044 -2.80633,4.276312 -2.539056,1.603616 1.202716,4.276312 9.48806,-2.939963 13.36348,8.686253 -8.95353,-0.4009 -2.13815,5.34539 -5.21176,-2.67269 -4.67722,4.54358 -2.40542,-3.0736 -4.009046,6.94901 -3.741775,4.27631 -4.142676,2.53906 1.870887,3.34087 v 3.34087 l -4.409948,2.53906 h -2.806329 l -2.80633,-0.53454 -0.267271,-2.00452 1.469982,-1.60362 0.668176,-0.4009 -0.53454,-1.73726 -4.142676,0.53454 -4.677217,-0.93544 -3.34087,-0.66817 -1.336347,-0.13364 -2.405428,3.87541 -1.469982,1.33635 -1.603616,0.66817 -5.479026,-0.66817 -2.405425,-2.80633 -0.133636,-1.60362 3.207235,-3.34087 1.870887,-2.53906 -2.80633,-2.93996 -2.672696,-4.40995 -0.668174,-2.40543 -4.409945,5.47903 -3.207234,-5.34539 -5.078121,2.13815 -3.474506,-6.14719 -8.285356,0.26726 13.229844,-8.418985 10.022607,4.81085 0.400905,-5.34539 -3.741775,-2.138156 -2.405425,-3.474503 -0.668173,-3.073601 v -7.884451 l 13.363474,5.078121 3.608139,-2.939965 5.211757,-2.271789 3.875408,-1.33635 2.138156,0.133636 3.207234,-3.474503 4.677217,-2.939965 2.405425,-0.668174 z" 1 mm fromsvg drawsegments
     # https://www.w3.org/TR/SVG11/paths.html#PathDataGeneralInformation
 
     def fromsvg(self,inputs):
-        """[PATH_D_ATTRIBUTE SCALE] Converts SVG path element d attribute
+        """Geometry,Conversion [PATH_D_ATTRIBUTE SCALE] Converts SVG path element d attribute
             to a list of coordinates suitable for drawelements. Applies SCALE
             to all coordinates."""
         #print(path)
@@ -2315,22 +2294,17 @@ class commands:
                     continue
                 output('Bad SVG token: %s'%token)
         return listresult
-    fromsvg.nargs = 2
-    fromsvg.category = 'Geometry,Conversion'
     
     def tocommand(self,elementlist,commandname):
-        """[ELEMENTLIST COMMANDNAME] Generate a command named COMMANDNAME that 
-           draws the elements in ELEMENTLIST."""
+        """Programming,Elements [ELEMENTLIST COMMANDNAME] Create a user command named COMMANDNAME that draws the drawsegments in ELEMENTLIST."""
         kicommand.kc(': %s "Draw Custom Drawing Command"'%commandname)
         for element in elementlist:
             s,e = element.GetStart(), element.GetEnd()
             kicommand.kc('%f,%f,%f,%f drawsegments'%(s[0],s[1],e[0],e[1]))
         kicommand.kc(';')
-    tocommand.nargs = 2
-    tocommand.category = 'Programming,Elements'
     
     def REJOIN(self,empty):
-        'Using selected lines, move multiple connected lines to the isolated line.'
+        'Action Using selected lines, move multiple connected lines to the isolated line.'
         # Moves the set of coniguous lines or tracks to match the single line already moved.
         kc('drawings copytop selected')
         # lines = _stack[-1]
@@ -2398,9 +2372,6 @@ class commands:
         # One of these is the lonely line, the other two are the polygon opening.
         # Match topmost or left most coordinates of the lonely line to the opening.
         # Now we have the vector of the Move, so Move the remaining lines.
-    REJOIN.nargs = 0
-    REJOIN.category = 'Action',
-
     
     def printf(self, *arglist):
         'Output [LISTOFLISTS FORMAT] Output each list within LISTOFLISTS formatted according to FORMAT in Pythons {} string format (https://www.python.org/dev/peps/pep-3101/).'
@@ -2996,7 +2967,7 @@ _dictionary['command'].update({
         '[STACK] [VALUE] Push VALUE onto the named STACK. spop,sdelete,scopy,scopyall'),
     'spop': Command(1,lambda c: _user_stacks[c[0]].pop() if len(_user_stacks[c[0]])>1 else _user_stacks[c[0]],'StackUser',
         '[STACK] Pop the top of the user STACK onto the main stack only if stack contains more than 1 item. spush,sdelete,scopy,scopyall'),
-    'sdelete': Command(1,lambda c: _user_stacks.pop([c[0]],None) and None,'StackUser',
+    'sdelete': Command(1,lambda c: _user_stacks.pop(c[0],None) and None,'StackUser',
         '[STACK] Delete the user stack. spush,spop,scopy,scopyall'),
     'scopy': Command(1,lambda c: _user_stacks[c[0]][-1],'StackUser',
         '[STACK] Copy the top of the user STACK onto the main stack. spush,spop,sdelete,scopyall'),
@@ -3245,7 +3216,12 @@ _dictionary['command'].update({
     'pick': Command(1,lambda c: _stack.insert(-1,_stack[-int(c[0])-2]),'Stack',
         '[NUMBER] Copy the value that is NUMBER of objects deep in the stack to the top of the stack. '
         '\n\tExamples:\n\t0 pick - copies the top of the stack.\n'
-        '\t1 pick - pushes a copy of the second item from the top of the stack onto the top of the stack.\n'
+        '\t1 pick - pushes a copy of the second item from the top of the stack onto the top of the stack.\n copy,pull'
+        ),
+    'pull': Command(1,lambda c: _stack.insert(-1,_stack.pop(-int(c[0])-2)),'Stack',
+        '[NUMBER] Move the value that is NUMBER of objects deep in the stack to the top of the stack. '
+        '\n\tExamples:\n\t0 pull - moves the top of the stack, essentially a null operation.\n'
+        '\t1 pull - moves  the second item from the top of the stack onto the top of the stack.\n copy,pick'
         ),
     'swap': Command(0,lambda c: SWAP(*c),'Stack',
         'Switches the two top objects on the stack.'),
@@ -3254,7 +3230,7 @@ _dictionary['command'].update({
         'LIST2 together at the same index. zip,'),
     'zip': Command(1,lambda c: zip(*c[0]),'Stack',
         '[LISTOFLISTS] Creates a list with parallel objects formed by each list '
-        'in LISTOFLISTS ((1,2,3)(4,5,6)(7,8,9)) -> ((1,4,7)(2,5,8)(3,6,9)). ,zip2'
+        'in LISTOFLISTS ((1,2,3)(4,5,6)(7,8,9)) -> ((1,4,7)(2,5,8)(3,6,9)). Note that zip is its own inverse. ,zip2'
         ),
     ':': Command(0,lambda c: setcompilemode(True),'Programming',
         'Begin the definition of a new command. This is the only command in '

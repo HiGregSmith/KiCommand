@@ -65,7 +65,7 @@ class TestKiCommand(unittest.TestCase):
         # individually list tests that cannot be named python functions
 		# stack, print, and printf are not tested. They don't modify the stack at all, they only print to the output window.
 
-        untested = untested - set(('*','+','-','/','+.','*.','index.')) - set(('stack','print','printf',':persist',';',':','undock'))
+        untested = untested - set(('*','+','-','/','+.','*.','index.','<','=','?')) - set(('stack','print','printf',':persist',';',':','undock'))
         untestedlist = list(untested)
         untestedlist.sort()
         print 'untested',untestedlist

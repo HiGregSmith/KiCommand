@@ -11,7 +11,7 @@ class TestDrawing(unittest.TestCase):
         # track = kc('clear 0.5 mm t param F.Cu l param 10,10,20,30 mm '
                         # 'drawsegments delist delist')
 
-    def test_drawsegments(self):
+    def test_drawsegments_wxpoint_attr_length(self):
         result = kc('clear 0,0,1,1 mm drawsegments',returnval=-1)
         self.assertEqual(len(result),1)
         self.assertEqual(len(result[0]),1)
@@ -74,7 +74,8 @@ class TestDrawing(unittest.TestCase):
         self.assertEqual(len(result[0][1]),1)
         result = kc('copy 1 index remove 0 index remove',returnval=-1)
         self.assertEqual(result,[])
-        
+        self.assertEqual(kc("clear 0,1 mm wxpoint 2,3 mm wxpoint concat 'x attr"),[0, 2000000])
+        self.assertEqual(kc("clear 0,1 mm wxpoint 2,3 mm wxpoint concat 'y attr"),[1000000, 3000000])
    
 if __name__ == '__main__':
     unittest.main()

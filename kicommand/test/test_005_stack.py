@@ -10,9 +10,19 @@ class TestProgramming(unittest.TestCase):
 
     def test_pop(self):
         self.assertEqual(kc('1 2 3 pop int'),2)
+    def test_spush_spop_scopy_scopyall_sdelete(self):
+        self.assertEqual(kc('1 int Testing spush clear Testing scopyall'),[1])
+        self.assertEqual(kc('1 int Testing spush 2 int Testing spush Testing scopyall'),[1,1,2])
+        self.assertEqual(kc('1 int Testing spush 2 int Testing spush Testing spop'),2)
+        self.assertEqual(kc('1 int Testing spush 2 int Testing spush Testing scopy'),2)
+        self.assertEqual(kc('Testing scopyall'),[1,1,2,1,1,2])
+        self.assertEqual(kc('1 int Testing spush 2 int Testing spush Testing sdelete 3 int Testing spush Testing scopyall'),[3])
     
     def test_pick(self):
         self.assertEqual(kc('34 67 234 789 2 pick int'),67)
+		
+    def test_pull(self):
+        self.assertEqual(kc('clear 34 67 234 789 2 pull',returnval=-1), [u'34', u'234', u'789', u'67'])
 		
 		# swap, zip2, zip
     def test_zip2(self):

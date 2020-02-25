@@ -7,7 +7,7 @@ KICAD_INSTALL = os.path.dirname(os.path.dirname(os.path.abspath(sys.executable))
 
 class TestSVGClass(unittest.TestCase):
 
-    def test_svg(self):
+    def test_fromsvg(self):
         kc(': dim "Elements Get width, height, x, y of the board" board list GetBoundingBox call copy copy copy GetWidth call swap GetHeight call extend swap GetCenter call flatlist extend -2 roundn int ;') # we don't care about differences less than 100nm
         kc(': tomm "Conversion [LIST] Convert nm to mm" 1 1 mm / list *. ;')
         kc('newboard')
