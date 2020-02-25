@@ -408,6 +408,11 @@ def kc(commandstring,returnval=0):
             if command.startswith("'"):
                 _stack.append(command[1:])
                 continue
+            if command.startswith("?") and len(command)>1:
+                if _stack.pop():
+                    command = command[1:]
+                else:
+                    continue
                 
             found = False
             #output('Dictionaries')
@@ -605,7 +610,7 @@ def getLayerID(layer):
     try:
         return int(layer)
     except:
-        raise ValueError ("Layer name or layer ID expected.")
+        raise ValueError ("Layer name or layer ID (as int or string) expected.")
 
 def draw_segmentlist(input, layer=pcbnew.Eco2_User, thickness=0.015*pcbnew.IU_PER_MM):
     """Draws the vector (wxPoint_vector of polygon vertices) on the given
@@ -2918,8 +2923,8 @@ _dictionary['command'].update({
         '[objects attribute] Get specified python attribute of the objects' ),
     # want this to work where c[1] is a value or list. If list, then member by member.
     #'index': Command(2,lambda c: map(lambda x: x[c[1]], c[0]),'Attributes',
-    'sindex': Command(2,lambda c: c[0][c[1]],'Python',
-       '[DICTIONARYOBJECT STRINGINDEX] Select an item in the list of objects based on string INDEX'),
+    'sindex': Command(2,lambda c: c[0][c[1]] if isinstance(c[1], collections.Hashable) else map(lambda x: c[0][x],c[1]) ,'Python',
+       '[DICTIONARYOBJECT STRINGINDEX] Select an item in the list of objects based on string INDEX. Also works with a STRINGINDEX_LIST, in which case a list is returned.'),
 
     'index.': Command(2, lambda c: map(lambda x: x[int(c[1])],c[0]), 'Conversion',
         '[LISTOFLISTS INDEX] return a list made up of the INDEX item of each list in LISTOFLISTS'),
@@ -3025,7 +3030,7 @@ _dictionary['command'].update({
         'here.'),
  
     
-    'call': Command(2,lambda c: map(lambda x: getattr(x,c[1])(), c[0]) 
+    'call': Command(2,lambda c: map(lambda x: getattr(x,c[1])(), c[0]) if hasattr(c[0],'__iter__') and not isinstance(c[0],basestring) else getattr(c[0],c[1])()
         # if hasattr(c[0],'__getitem__') and hasattr(c[0][0],'__getitem__') else 
         # map(lambda x: getattr(x,c[1])(), [c[0]])
         # if hasattr(c[0],'__getitem__') else  
@@ -3249,10 +3254,17 @@ _dictionary['command'].update({
     ':': Command(0,lambda c: setcompilemode(True),'Programming',
         'Begin the definition of a new command. This is the only command in '
         'which arguments occur after the command. Command definition ends with '
-        'the semicolon (;). Run command SEEALL for more examples. Special commands are'
+        'the semicolon (;). Run command SEEALL for more examples. Special commands are '
         "Delete all commands ': ;'. Delete a command ': COMMAND ;"
         ),
         
+    '?': Command(0,lambda c: None,'Programming',
+        "?command will pop the stack and execute 'command' if True. "
+        'The top of the stack is interpreted as a boolean, (see bool). '
+        'Essentially this is a single-command-skip if False. '
+        'To conditionally execute a series of command, define a new user command using the : command. '
+        ":,;,true,false,bool"
+        ),
     ':persist': Command(0,lambda c: setcompilemode(True,'persist'),'Programming',
         'Begin the definition of a new command in the persist dictionary. '
         'This is the only type of command in '
@@ -3336,7 +3348,7 @@ _dictionary['command'].update({
     'drawparams': Command(2,lambda c: DRAWPARAMS(c),'Draw',
         '[THICKNESS,WIDTH,HEIGHT LAYER] Set drawing parameters for future draw commands.\n'
         'Example: 1,5,5 mm F.Fab drawparams'),
-    'showparams': Command(0,lambda c: _user_stacks['drawparams'],'Draw',
+    'getparams': Command(0,lambda c: _user_stacks['drawparams'],'Draw',
         'Return the draw parameters.'),
     'findnet': Command(1,lambda c: FINDNET(*c),'Draw','[NETNAME] Returns the netcode of NETNAME.'),
     'param': Command(2,lambda c: PARAM(*c),'Draw',

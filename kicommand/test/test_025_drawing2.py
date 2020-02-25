@@ -3,7 +3,7 @@ from kicommand.kicommand import kc
 
 class TestDrawing2(unittest.TestCase):
 
-    # def test_showparams_drawparams(self):
+    # def test_getparams_drawparams(self):
         # result = kc('clear F.SilkS layernums l param 0,0,0,1,1,1,1,0,0,0 mm 10 int list *. drawsegments delist 1 mm list swap round',returnval=-1)
     # # def test_drawsegments(self):
         # # track = kc('clear 0.5 mm t param F.Cu l param 10,10,20,30 mm '
@@ -13,7 +13,7 @@ class TestDrawing2(unittest.TestCase):
         kc(': dim "Elements Get width, height, x, y of the board" board list GetBoundingBox call copy copy copy GetWidth call swap GetHeight call extend swap GetCenter call flatlist extend -2 roundn int ;') # we don't care about differences less than 100nm
         kc(': tomm "Conversion [LIST] Convert nm to mm" 1 1 mm / list *. ;')
         kc('newboard')
-        self.assertEqual(kc('4,2,3 mm F.SilkS drawparams showparams'),
+        self.assertEqual(kc('4,2,3 mm F.SilkS drawparams getparams'),
         {'h': 3000000.0, 'zp': 0, 'zt': 0, 't': 4000000.0, 'w': 2000000.0, 'l': 'F.SilkS'})
         self.assertEqual(kc('clear 0,0,10,0 mm list drawsegments dim drawings len append'),[14000000,4000000,5000000,0, 1])
         self.assertEqual(kc('drawings len'),1)
