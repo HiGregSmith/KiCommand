@@ -2006,56 +2006,78 @@ def bbintersect(seg1,seg2):
     s1bb = seg1.GetBoundingBox()
     s2bb = seg2.GetBoundingBox()
     return True
-    
+
+DEBUG = False
 def CUT():
 
-    cutees = filter(
+    cuttees = filter(
         lambda x: isinstance(x,pcbnew.DRAWSEGMENT) and x.GetShape() == pcbnew.S_SEGMENT,
         getBoard().GetDrawings())
 
-    cutter = filter(lambda x:x.IsSelected(),cutees)[0]
+    cutter = filter(lambda x:x.IsSelected(),cuttees)[0]
     scutter,ecutter = get_ds_ends(cutter)
-    #output(str(cutter),len(cutees))
+    if DEBUG:
+        output("Cutting {} segments with {}".format(len(cuttees),str(cutter)))
     bb = cutter.GetBoundingBox()
     cutl,cutr,cutt,cutb = bb.GetLeft(),bb.GetRight(),bb.GetTop(),bb.GetBottom()
     within = []
-    for cutee in cutees:
-        if cutee == cutter:
+    for cuttee in cuttees:
+        if cuttee == cutter:
             # output('=')
+            if DEBUG:
+                output("Cuttee is cutter")
             continue
-        if not isinstance(cutee,pcbnew.DRAWSEGMENT):
+        if not isinstance(cuttee,pcbnew.DRAWSEGMENT):
+            if DEBUG:
+                output("Cuttee is not DRAWSEGMENT")
             continue
-        if cutee.GetShape() != pcbnew.S_SEGMENT:
+        if cuttee.GetShape() != pcbnew.S_SEGMENT:
+            if DEBUG:
+                output("Cuttee shape is not S_SEGMENT: {}".format(cuttee.GetShape()))
             continue
-        #output(get_ds_ends(cutee))
-        bb = cutee.GetBoundingBox()
+        #output(get_ds_ends(cuttee))
+        bb = cuttee.GetBoundingBox()
         segl,segr,segt,segb = bb.GetLeft(),bb.GetRight(),bb.GetTop(),bb.GetBottom()
         if segr < cutl or segl > cutr or segb < cutt or segt > cutb:
+            if DEBUG:
+                output("Cuttee outside cutter bounding box")
             continue
         #output('!')
 
         # Get intersection point
-        s,e = get_ds_ends(cutee)
+        s,e = get_ds_ends(cuttee)
+        if DEBUG:
+            output("Evaluating {}".format(get_ds_ends(cuttee)))
         intersect = lines_intersect(s,e,scutter,ecutter)
         #output('intersect',intersect,'s',s,'e',e,'scut',scutter,'ecut',ecutter)
         if intersect is None:
-            output('intersect returned None')
+            if DEBUG:
+               output('intersect returned None')
             continue
         
-        if ((s[0] < intersect[0] < e[0]) or (e[0] < intersect[0] < s[0])) and \
-        ((s[1] < intersect[1] < e[1]) or (e[1] < intersect[1] < s[1])) and \
-        ((scutter[0] < intersect[0] < ecutter[0]) or (ecutter[0] < intersect[0] < scutter[0])) and \
-        ((scutter[1] < intersect[1] < ecutter[1]) or (ecutter[1] < intersect[1] < scutter[1])):
+        
+        if ((s[0] <= intersect[0] <= e[0]) or (e[0] <= intersect[0] <= s[0])) and \
+           ((s[1] <= intersect[1] <= e[1]) or (e[1] <= intersect[1] <= s[1])) and \
+        ((scutter[0] <= intersect[0] <= ecutter[0]) or (ecutter[0] <= intersect[0] <= scutter[0])) and \
+        ((scutter[1] <= intersect[1] <= ecutter[1]) or (ecutter[1] <= intersect[1] <= scutter[1])):
 
+            if intersect[0] == s[0] and intersect[1] == s[1]:
+                continue
         # see if intersection point is within s and e
         #if (s[0] < intersect[0] < e[0]) and (s[1] < intersect[1] < e[1]) and \
            #(scutter[0] < intersect[0] < ecutter[0]) and (scutter[1] < intersect[1] < ecutter[1]):
+            if DEBUG:
+                output("Cutting {}".format(get_ds_ends(cuttee)))
             newe = tuple(e)
-            cutee.SetEnd(intersect)
-            draw_segment(intersect[0],intersect[1],newe[0],newe[1],layer=cutee.GetLayer(),thickness=cutee.GetWidth())
+            cuttee.SetEnd(intersect)
+            draw_segment(intersect[0],intersect[1],newe[0],newe[1],layer=cuttee.GetLayer(),thickness=cuttee.GetWidth())
+        else:
+            if DEBUG:
+                output("Cuttee {} doesn't intersect cutter {}. Intersect point: {}".format(get_ds_ends(cuttee),get_ds_ends(cutter),intersect))
+
             #output('new segment',intersect, e)
             #output('cut',s,e,'at',intersect)        
-        # within.append(cutee) 
+        # within.append(cuttee) 
     #pcbnew.UpdateUserInterface()
     #cutter.UnLink()
     getBoard().GetDrawings().Remove(cutter)
@@ -2103,14 +2125,6 @@ def convert_to_points(input):
             # list_to_paired_list(i)
     # output( 'ctp3: ',input)
     # return input
-def FINDNET(netname):
-    # board has: 'BuildListOfNets', 'CombineAllAreasInNet', 'FindNet'
-    board = getBoard()
-    # nets = board.GetNetsByName()
-    # netinfo = nets.find(netname).value()[1]
-    
-    netinfo = board.FindNet(netname)
-    return netinfo.GetNet()
 
 
 class commands:
@@ -2158,14 +2172,14 @@ class commands:
         return p
     
     def AREAS(self,empty):
-        """Elements,Area Return all Areas of the board (includes Zones and Keepouts)."""
+        """Elements,Area Return all Areas of the board (includes Zones and Keepouts). zones,keepouts"""
         b = getBoard()
         return [b.GetArea(i) for i in range(b.GetAreaCount())]
         
     def ZONES(self,ignore):
-        """Elements,Area Return all Zones of the board."""
+        """Elements,Area Return all non-keepout areas of the board. areas,keepouts"""
         b = getBoard()
-        return filter(lambda c: not c.IsKeepout(),[b.GetArea(i) for i in range(b.GetAreaCount())])
+        return filter(lambda c: not c.GetIsKeepout(),[b.GetArea(i) for i in range(b.GetAreaCount())])
 
     # Example: clear toptextobj selected copy GetThickness call list swap topoints pairwise F.SilkS tosegments copy 2 pick SetWidth callargs pop F.Cu tocopper
     # : texttosegments "Draw [TEXTOBJLIST LAYER] Copies text objects in TEXTOBJLIST to LAYER." swap copy GetThickness call list swap topoints pairwise swap tosegments copy 2 pick SetWidth callargs pop ;
@@ -2210,9 +2224,9 @@ class commands:
         return valuelist
     
     def KEEPOUTS(self,empty):
-        """Elements,Area Return all Keepouts of the board."""
+        """Elements,Area Return all Keepout Areas of the board. areas,zones"""
         b = getBoard()
-        return filter(lambda c: c.IsKeepout(),[b.GetArea(i) for i in range(b.GetAreaCount())])
+        return filter(lambda c: c.GetIsKeepout(),[b.GetArea(i) for i in range(b.GetAreaCount())])
     
     def AREACORNERS(self,arealist):
         """Geometry,Area [AREALIST] Get AREALIST corners."""
@@ -2430,32 +2444,121 @@ class commands:
         'OBJECTLIST. Returns the list of results in the same order as the '
         'original OBJECTLIST. The commands LIST and ZIP2 will be helpful '
         'here. ARGLISTOFLISTS can also be a single list or a single value, '
-        'in which case the value will be converted to a list of lists.'
-        c = c[0]
-        #print(c)
-        args = c[1]
+        'in which case the value will be converted to a list of lists. list,zip2,zip'
         
-        if hasattr(args,'__getitem__'):
-            if not hasattr(args[0],'__getitem__'):
-                args = [args]
-        else:
-            args = [[args]]
+        # Possible permulations
+        # 010 OBJECT     ARGLIST FUNCTION    # execute FUNCTION once on OBJECT with single ARGLIST
+        # 000 OBJECT     ARG     FUNCTION    # execute FUNCTION on OBJECT with single ARG
+        # 100 OBJECTLIST ARG     FUNCTION    # execute FUNCTION on each OBJECT with ARG, return list of results
+ 
+        #   ? OBJECT     ARGLOL FUNCTION     #? execute FUNCTION on OBJECT for each ARG list in LOL
+        # 110 OBJECTLIST ARGLOL FUNCTION     # execute FUNCTION on OBJECT with corresponding ARG list in LOL, return list of results
+        # 011 OBJECT     ARGLOL FUNCTIONLIST # execute each FUNCTION on OBJECT for each ARG list in LOL
+        # 111 OBJECTLIST ARGLOL FUNCTIONLIST # execute FUNCTION on each OBJECT using each ARGLIST in turn.
 
-        if len(c[0]) > args:
-            return map(lambda x: 
-                getattr(x[0],c[2])(*(x[1])), 
-                zip(c[0], cycle(args))
-                )
-        elif len(c[0]) < args:
-            return map(lambda x: 
-                getattr(x[0],c[2])(*(x[1])), 
-                zip(cycle(c[0]), args)
-                )
-        else:
-            return map(lambda x: 
-                getattr(x[0],c[2])(*(x[1])), 
-                zip(c[0], args)
-                )
+        #output('argvalue: {}'.format(str(c)))
+        obj,arg,func = c[0]
+        islist = (isiter(obj),isiter(arg),isiter(func))
+        output('{}'.format(str(c[0])))
+        output('iter: {}'.format(islist))
+        
+        if not isiter(obj) and not isiter(func):
+            output('neither obj nor func are iter')
+            if not isiter(arg):
+                output('arg is not iter')
+                arg = [arg]
+            return getattr(obj,func)(*arg)
+
+
+        output('neither obj nor func are iter')
+        if not isiter(arg):
+            arg = [[arg]]
+
+        # Now ARG is guaranteed to be LOL (possibly from case 100)
+        # 110 OBJECTLIST ARGLOL FUNCTION    
+        # 011 OBJECT     ARGLOL FUNCTIONLIST
+        # 111 OBJECTLIST ARGLOL FUNCTIONLIST
+        if not isiter(obj):
+            obj = [obj]
+        if not isiter(func):
+            func = [func]
+        
+        islist = (isiter(obj),isiter(arg),isiter(func))
+        output('Final:')
+        output('obj : {}'.format(str(obj)))
+        output('arg : {}'.format(str(arg)))
+        output('func: {}'.format(str(func)))
+        output('iter: {}'.format(islist))
+        
+        # now we have only case 111
+        # cycle all elements to the longest element
+        callcount = max(len(obj),len(arg),len(func))
+        output(
+        str(
+        [
+        (cycle(obj),cycle(func),cycle(arg))
+        for x in range(callcount)
+        ]
+        ))
+        return map(lambda x: getattr(x[0],x[1])(*x[2]),zip(cycle(obj),cycle(func),cycle(arg),range(callcount)))
+                
+    # OLD VERSIOM
+    # def callargs(self,*c):
+        # 'Python [OBJECTLIST ARGLISTOFLISTS FUNCTION] Execute python FUNCTION on each member '
+        # 'of OBJECTLIST with arguments in ARGLISTOFLISTS. ARGLISTOFLISTS can be '
+        # 'a different length than OBJECTLIST, in which case ARGLISTOFLISTS '
+        # 'elements will be repeated (or truncated) to match the length of '
+        # 'OBJECTLIST. Returns the list of results in the same order as the '
+        # 'original OBJECTLIST. The commands LIST and ZIP2 will be helpful '
+        # 'here. ARGLISTOFLISTS can also be a single list or a single value, '
+        # 'in which case the value will be converted to a list of lists. list,zip2,zip'
+        
+        # if not isiter(c[0]) and not isiter(c[2]):
+            # if not isiter(args):
+                # args = [args]
+        
+        # if not isiter(args):
+            # args = [[args]]
+    
+        # c = c[0]
+        # #print(c)
+        # args = c[1]
+        
+        # if isiter(args):
+            # if not isiter(args[0]):
+                # args = [args]
+        # else:
+            # args = [[args]]
+
+        # if not hasattr(c,'__iter__') and not isinstance(c,basestring):
+            # c = [c]
+            
+        # if len(c[0]) > args:
+            # return map(lambda x: 
+                # getattr(x[0],c[2])(*(x[1])), 
+                # zip(c[0], cycle(args))
+                # )
+        # elif len(c[0]) < args:
+            # return map(lambda x: 
+                # getattr(x[0],c[2])(*(x[1])), 
+                # zip(cycle(c[0]), args)
+                # )
+        # else:
+            # return map(lambda x: 
+                # getattr(x[0],c[2])(*(x[1])), 
+                # zip(c[0], args)
+                # )
+                
+    # def FINDNET(netname):
+        # 'Draw [NETNAME] Returns the netcode of NETNAME.'
+        # # board has: 'BuildListOfNets', 'CombineAllAreasInNet', 'FindNet'
+        # board = getBoard()
+        # # nets = board.GetNetsByName()
+        # # netinfo = nets.find(netname).value()[1]
+        
+        # netinfo = board.FindNet(netname)
+        # return netinfo.GetNet()
+
 
 ################## END OF COMMANDS CLASS ###########################
             
@@ -2491,6 +2594,18 @@ for c in filter(lambda x: not x.startswith('__') and hasattr(getattr(commands,x)
             # print(c,':',numarg)
         _dictionary['command'][c.lower()] = Command(nargs,f,category,doc)
 
+
+def LESSTHAN(*c):
+    if isiter(c[0]):
+        if isiter(c[1]):
+            return itertools.starmap(operator.lt,itertools.izip(c[0],c[1]))
+        else:
+            return map(lambda x: float(x)<float(c[1]),c[0])
+    else:
+        if isiter(c[1]):
+            return map(lambda x: float(x)>float(c[0]),c[1])
+        else:
+            return float(c[1])>float(c[0])
 
 def rotate_point(point,center,angle,ccw=True):
     # try:
@@ -2850,7 +2965,9 @@ def HELP(textlist,category=None,exact=False):
         #'\n'.join(['\n'.join(wrap(block, width=50)) for block in text.splitlines()])
 
 
-
+def isiter(object):
+    return hasattr(object,'__iter__') and not isinstance(object,basestring)
+    
 # Add more command definitions
 _dictionary['command'].update({
     # PCB Elements
@@ -2896,7 +3013,9 @@ _dictionary['command'].update({
     'notselected': Command(1,lambda c: filter(lambda x: not x.IsSelected(), c[0]),'Filter',
         '[objects] Get unselected objects '),
     'attr': Command(2,lambda c: map(lambda x: getattr(x,c[1]), c[0]),'Python',
-        '[objects attribute] Get specified python attribute of the objects' ),
+        '[OBJECTSLIST ATTRIBUTE] Get specified python attribute of the objects. attr.,' ),
+    'attr.': Command(2,lambda c: map(lambda y: map(lambda x: getattr(x,c[1]),y), c[0]),'Python',
+        '[OBJECTLISTOFLISTS ATTRIBUTE] Get specified python attribute of the objects with the LISTOFLISTS. attr,' ),
     # want this to work where c[1] is a value or list. If list, then member by member.
     #'index': Command(2,lambda c: map(lambda x: x[c[1]], c[0]),'Attributes',
     'sindex': Command(2,lambda c: c[0][c[1]] if isinstance(c[1], collections.Hashable) else map(lambda x: c[0][x],c[1]) ,'Python',
@@ -2946,15 +3065,22 @@ _dictionary['command'].update({
     'filter': Command(2,lambda c: list(compress(c[0], c[1])),'Filter', # filter op1 by bool op2
         '[LIST1 TF_LIST] Retain objects in LIST1 where the corresponding value in TF_LIST is True, not None, not zero, and not zero length'),
     #'<': Command(2,lambda c: [c[0][i] for i,x in enumerate(c[1]) if x<float(c[2]))
-    '<': Command(2,lambda c: map(lambda x: float(x)<float(c[1]),c[0]),'Comparison',
-        '[LIST VALUE] Create a LIST of True/False values corresponding to whether the values in LIST are less than VALUE (for use prior to FILTER)'),
+    '<': Command(2,lambda c: LESSTHAN(*c),'Comparison',
+        '[VALUES1 VALUES2] Returns boolean value of VALUES1 < VALUES2. If either is a list, the result is a list. If both are a list, the result is an element by element comparison. (for use prior to FILTER).'),
+
+# cycletocount(c[0],max(len(c[0]),len(c[1])))
+# cycletocount(c[1],max(len(c[0]),len(c[1])))
+# def cycletocount(iterable,count):
+    # return itertools.islice(itertools.cycle(iterable), 0, count, 1)
+     
     'filtertype': Command(2,lambda c: filter(lambda x:isinstance(x,getattr(pcbnew,c[1])),c[0]),'Filter',
         '[LIST TYPE] Retains objects in LIST that are of TYPE' ),
     'istype': Command(2,lambda c: map(lambda x:isinstance(x,getattr(pcbnew,c[1])),c[0]),'Comparison',
         '[LIST TYPE] Create a LIST of True/False values corresponding to whether '
         'the values in LIST are of TYPE (for use prior to FILTER). '
         'TYPE must be an attribute of pcbnew.' ),
-    '=': Command(2,lambda c: map(lambda x: x==c[1],c[0]),'Comparison',
+    '=': Command(2,lambda c: map(lambda x: x==c[1],c[0])if hasattr(c[0],'__iter__') and not isinstance(c[0],basestring) else c[1]==c[0],'Comparison',
+    
         '[LIST VALUE] Create a LIST of True/False values corresponding to whether the values in LIST equal to VALUE (for use prior to FILTER)'),
     'isnone': Command(1,lambda c: map(lambda x: x is None,c[0]),'Comparison',
         '[LIST VALUE] Create a LIST of True/False values corresponding to whether the values in LIST equal to None (for use prior to FILTER)'),
@@ -3008,7 +3134,7 @@ _dictionary['command'].update({
         'here.'),
  
     
-    'call': Command(2,lambda c: map(lambda x: getattr(x,c[1])(), c[0]) if hasattr(c[0],'__iter__') and not isinstance(c[0],basestring) else getattr(c[0],c[1])()
+    'call': Command(2,lambda c: map(lambda x: getattr(x,c[1])(), c[0]) if isiter(c[0]) else getattr(c[0],c[1])()
         # if hasattr(c[0],'__getitem__') and hasattr(c[0][0],'__getitem__') else 
         # map(lambda x: getattr(x,c[1])(), [c[0]])
         # if hasattr(c[0],'__getitem__') else  
@@ -3200,7 +3326,15 @@ _dictionary['command'].update({
     #'list': Command(1,lambda c: map(lambda x: [x],c[0]),'Conversion'),
     'iset': Command(1,lambda c: set(c[0]),'Conversion',
         '[ITERABLE] Make a set from ITERABLE where each item is a member of ITERABLE.'),
-    'ilist': Command(1,lambda c: list(c[0]),'Conversion',
+    'isstring': Command(1,lambda c: isinstance(c[0],basestring),'Conversion,Test',
+        '[OBJECT] Return True if OBJECT is a string.'),
+    'isiter': Command(1,lambda c: hasattr(c[0],'__iter__') and not isinstance(c[0],basestring),'Conversion,Test',
+        '[OBJECT] Return True if OBJECT is an iterable (and not string). A list is iterable, for example'),
+    'isint': Command(1,lambda c: isinstance(c[0],int),'Conversion,Test',
+        '[OBJECT] Return True if OBJECT is an int.'),
+    'isfloat': Command(1,lambda c: isinstance(c[0],float),'Conversion,Test',
+        '[OBJECT] Return True if OBJECT is float.'),
+    'ilist': Command(1,lambda c: list(c[0]),'Conversion,Test',
         '[ITERABLE] Make list from ITERABLE where each item is a member of ITERABLE.'),
     'list': Command(1,lambda c: [c[0]],'Conversion',
         '[OBJECT] Make OBJECT into a list (with only OBJECT in it).'),
@@ -3333,7 +3467,9 @@ _dictionary['command'].update({
         'Example: 1,5,5 mm F.Fab drawparams'),
     'getparams': Command(0,lambda c: _user_stacks['drawparams'],'Draw',
         'Return the draw parameters.'),
-    'findnet': Command(1,lambda c: FINDNET(*c),'Draw','[NETNAME] Returns the netcode of NETNAME.'),
+    #'findnet': Command(1,lambda c: FINDNET(*c),'Draw','[NETNAME] Returns the netcode of NETNAME.'),
+    # findnet could be implemented as ':persist findnet "Draw [NETNAME] Returns the netcode of NETNAME." board swap FindNet call'
+
     'param': Command(2,lambda c: PARAM(*c),'Draw',
         '[VALUESLIST KEYLIST] Set drawing parameters. Each member of VALUELIST is assigned to the '
         'corresponding key in KEYLIST. Keys are "t,w,h,l,zt,zp" indicating Thickness, Width, Height, '
@@ -3510,6 +3646,74 @@ def pad_to_drawsegment(pad):
     # menu().register()
 # except:
     # pass
+
+def getallcommands():
+    fulldict = {}
+    for dictname in ('command','persist'): #,'user'):
+        fulldict.update(_dictionary[dictname])
+
+    dependencies = defaultdict(list)
+    
+    for cname,command in _dictionary['persist'].iteritems():
+        for subcommand in command.execute:
+            #print(str(subcommand))
+            dependencies[cname].append(subcommand)
+    for cname,executelist in dependencies.iteritems():
+        dependencies[cname] = set([x for x in executelist if x in dependencies])
+       
+    # print("List of commands without dependencies")
+
+    # for command,depends in dependencies.iteritems():
+        # if not depends:
+            # print('"{}"'.format(command))
+
+    #print("List of commands with dependencies")
+    for x in toposort2(dependencies):
+        print(x)
+    # for command,depends in toposort2(dependencies):
+        # if depends:
+            # print('"{}: {}"'.format(command,', '.join(depends)))
+        
+from functools import reduce
+
+def toposort2(data):
+    """Dependencies are expressed as a dictionary whose keys are items
+and whose values are a set of dependent items. Output is a list of
+sets in topological order. The first set consists of items with no
+dependences, each subsequent set consists of items that depend upon
+items in the preceeding sets.
+
+>>> print '\\n'.join(repr(sorted(x)) for x in toposort2({
+...     2: set([11]),
+...     9: set([11,8]),
+...     10: set([11,3]),
+...     11: set([7,5]),
+...     8: set([7,3]),
+...     }) )
+[3, 5, 7]
+[8, 11]
+[2, 9, 10]
+
+"""
+
+    # http://code.activestate.com/recipes/578272-topological-sort/
+    # Ignore self dependencies.
+    for k, v in data.items():
+        v.discard(k)
+    # Find all items that don't depend on anything.
+    extra_items_in_deps = reduce(set.union, data.itervalues()) - set(data.iterkeys())
+    # Add empty dependences where needed
+    data.update({item:set() for item in extra_items_in_deps})
+    while True:
+        ordered = set(item for item, dep in data.iteritems() if not dep)
+        if not ordered:
+            break
+        yield ordered
+        data = {item: (dep - ordered)
+                for item, dep in data.iteritems()
+                    if item not in ordered}
+    assert not data, "Cyclic dependencies exist among these items:\n%s" % '\n'.join(repr(x) for x in data.iteritems())
+
 
 def __main__(self):
     KiCommandAction.getInstance().register()

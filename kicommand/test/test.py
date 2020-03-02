@@ -34,7 +34,7 @@ def iterate_tests(test_suite_or_case):
 
 
 def runtests():
-    global testsuite
+    global testsuite,fullsuite
     testsuite = unittest.TestLoader().discover('kicommand.test',pattern="test_*.py")
     suite = unittest.TestLoader().loadTestsFromTestCase(TestKiCommand)
     #unittest.TextTestRunner(verbosity=2).run(suite)
@@ -44,11 +44,11 @@ def runtests():
 
 class TestKiCommand(unittest.TestCase):
         
-    def test_coverage(self):
-        global testsuite
+    def test_Coverage(self):
+        global testsuite,fullsuite
         prefix = 'test_'
         #fulltestnames = filter(lambda x: x.startswith(prefix),dir(self))
-        testnames = [test._testMethodName.split('_') for test in iterate_tests(testsuite)]
+        testnames = [test._testMethodName.split('_') for test in iterate_tests(fullsuite)]
 		# flatten the list of lists into a single-dimension list
         testnames = [item for sublist in testnames for item in sublist]
 
@@ -65,12 +65,19 @@ class TestKiCommand(unittest.TestCase):
         # individually list tests that cannot be named python functions
 		# stack, print, and printf are not tested. They don't modify the stack at all, they only print to the output window.
 
-        untested = untested - set(('*','+','-','/','+.','*.','index.','<','=','?','list.')) - set(('stack','print','printf',':persist',';',':','undock'))
+        # The first set are actually tested, but can't be automatically added 
+        # because "test" detection is done by parsing function names, and these
+        # can't be added as function names.
+        # The second set is not specifically tested.
+        untested = untested - set(('*','+','-','/','+.','*.','index.','<','=','?','list.','attr.')) - set((':persist',';',':'))
         untestedlist = list(untested)
         untestedlist.sort()
         print 'untested',untestedlist
 
-            
+    def test_UNTESTED_stack_print_printf_undock(self):
+        # Don't really know how to test these
+        # because they output directly to KiCommand window.
+        pass
 #unittest.main()
 
 # The following lines enable testing from pcbnew Script Console

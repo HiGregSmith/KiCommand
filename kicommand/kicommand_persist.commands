@@ -1,18 +1,18 @@
-:persist wxpoint "Conversion [X,Y] Create a  wxpoint" pcbnew list swap list wxPoint callargs ;
-:persist toptextobj "Elements Get the top level text objects." drawings EDA_TEXT filtertype ;
-:persist valuetextobj "Elements Get all module's Value text objects." modules Value call ;
-:persist referencetextobj "Elements Get all module's Reference text objects." modules Reference call ;
-:persist moduletextobj "Elements Get all module's text objects that are not Value and not Reference." modules GraphicalItems calllist EDA_TEXT filtertype ;
-:persist drawparams "Draw [THICKNESS,WIDTH,HEIGHT LAYER] Set drawing parameters for future draw commands.\nExample: 1,5,5 mm F.Fab drawparams" 'l param t,w,h param ;
-:persist textfromobj "Elements [TEXTOBJECT] Get the text string from a text object. valobj,refobj" GetShownText call ;
-:persist valuetext "Elements Get all module's Value text as a string." modules GetValue call ;
-:persist referencetext "Elements Get all module's Reference text as a string." modules GetReference call ;
-:persist not "Programming [VALUELIST] Invert the boolean value. False, 0, None becomes True and True, non-zero, non-empty list becomes False." false = ;
-:persist copy "Programming Copies the top of the stack." 0 pick ;
-:persist setselect "Elements [OBJECTLIST] Sets the objects as Selected." SetSelected call pop ;
-:persist clearselect "Elements [OBJECTLIST] Sets the objects as Unselected." ClearSelected call pop ;
-:persist orthogonal "Draw Make the angle between all elements a integer multiple 90 degrees." 90 makeangle ;
-:persist clearallselected "Elements Clear the selection of all items."
+:persist wxpoint            "Conversion [X,Y] Create a  wxpoint" pcbnew list swap list wxPoint callargs ;
+:persist toptextobj         "Elements Get the top level text objects." drawings EDA_TEXT filtertype ;
+:persist valuetextobj       "Elements Get all module's Value text objects." modules Value call ;
+:persist referencetextobj   "Elements Get all module's Reference text objects." modules Reference call ;
+:persist moduletextobj      "Elements Get all module's text objects that are not Value and not Reference." modules GraphicalItems calllist EDA_TEXT filtertype ;
+:persist drawparams         "Draw [THICKNESS,WIDTH,HEIGHT LAYER] Set drawing parameters for future draw commands.\nExample: 1,5,5 mm F.Fab drawparams" 'l param t,w,h param ;
+:persist textfromobj        "Elements [TEXTOBJECT] Get the text string from a text object. valobj,refobj" GetShownText call ;
+:persist valuetext          "Elements Get all module's Value text as a string." modules GetValue call ;
+:persist referencetext      "Elements Get all module's Reference text as a string." modules GetReference call ;
+:persist not                "Programming [VALUELIST] Invert the boolean value. False, 0, None becomes True and True, non-zero, non-empty list becomes False." false = ;
+:persist copy               "Programming Copies the top of the stack." 0 pick ;
+:persist setselect          "Elements [OBJECTLIST] Sets the objects as Selected." SetSelected call pop ;
+:persist clearselect        "Elements [OBJECTLIST] Sets the objects as Unselected." ClearSelected call pop ;
+:persist orthogonal         "Draw Make the angle between all elements a integer multiple 90 degrees." 90 makeangle ;
+:persist clearallselected   "Elements Clear the selection of all items."
         modules copy GetReference call clearselect
         copy GetValue call clearselect
         copy GraphicalItems calllist clearselect
@@ -21,11 +21,11 @@
         tracks clearselect
         drawings clearselect 
         ;
-:persist outlinepads "Draw Outline all pads using line segments with the layer and width specified by drawparams." 
+:persist outlinepads        "Draw Outline all pads using line segments with the layer and width specified by drawparams." 
         pads copy corners swap copy GetCenter call swap 
         GetOrientationDegrees call rotatepoints drawsegments
         ;
-:persist outlinetext "Draw Outline all text objects with the layer and width specified by drawparams."
+:persist outlinetext        "Draw Outline all text objects with the layer and width specified by drawparams."
         valuetextobj
         referencetextobj concat 
         moduletextobj concat 
@@ -35,41 +35,63 @@
         +l rotatepoints drawsegments
         ;
         
-:persist outlinetoptext "Draw Outline all top text objects with the layer and width specified by drawparams."
+:persist outlinetoptext     "Draw Outline all top text objects with the layer and width specified by drawparams."
         toptextobj
         copy GetTextBox call corners swap copy GetCenter call swap
         GetTextAngleDegrees call rotatepoints drawsegments ;
         ;
-:persist texttosegments "Draw [TEXTOBJLIST LAYER] Copies text objects in TEXTOBJLIST to LAYER."
+:persist texttosegments     "Draw [TEXTOBJLIST LAYER] Copies text objects in TEXTOBJLIST to LAYER."
         swap copy GetThickness call list swap 
         topoints pairwise 2 pick tosegments 
         copy 2 pick SetWidth callargs pop
         swap pop swap pop
         ;
-:persist regularsize "Draw,Geometry [SIDELENGTH] [PARALLELANGLE] regularsize takes the selected segments, joins them into a regular polygon, then sizes the edges to the specified length, and places one of the edges parallel to the specified angle Example: 30 mm 0 regularsize"
+:persist regularsize        "Draw,Geometry [SIDELENGTH] [PARALLELANGLE] regularsize takes the selected segments, joins them into a regular polygon, then sizes the edges to the specified length, and places one of the edges parallel to the specified angle Example: 30 mm 0 regularsize"
         drawings selected copy connect copy
         regular copy copy length delist stack 4 pick swap / 
         scale copy delist list angle delist 2 pick swap - rotate
         pop pop
         ;
-:persist setcurrentboard "Elements Sets the currently loaded in the pcbnew window as the default board and prints its filename." getboard copy Board spush list GetFileName call delist print pop ;        
-:persist range "Programming [START,STOP,INC] Returns a list of numbers" builtins 'range sindex list stack swap int list fcallargs delist ;
-:persist len "Conversion [LIST] return the length of the list" ilist list list builtins 'len sindex list swap stack fcallargs sum stack ;
-:persist newboard "Elements Create a new empty board and make it the current board." pcbnew list BOARD call delist Board spush ;
-:persist newadd "Elements [TYPE PARENT] Add a new element of TYPE to PARENT. Returns the new module." list copy pcbnew list swap list 3 pick callargs 1 pick 1 pick list Add callargs pop swap pop swap pop delist ;
+:persist setcurrentboard    "Elements Sets the currently loaded in the pcbnew window as the default board and prints its filename." getboard copy Board spush list GetFileName call delist print pop ;        
+:persist range              "Programming [START,STOP,INC] Returns a list of numbers" builtins 'range sindex list stack swap int list fcallargs delist ;
+:persist len                "Conversion [LIST] return the length of the list" ilist list list builtins 'len sindex list swap stack fcallargs sum stack ;
+:persist newboard           "Elements Create a new empty board and make it the current board." pcbnew list BOARD call delist Board spush ;
+:persist newadd             "Elements [TYPE PARENT] Add a new element of TYPE to PARENT. Returns the new module." list copy pcbnew list swap list 3 pick callargs 1 pick 1 pick list Add callargs pop swap pop swap pop delist ;
 
-:persist true "Programming Returns the value True." 1 bool ;
-:persist false "Programming Returns the value False."' bool ;
+:persist true               "Programming Returns the value True." 1 bool ;
+:persist false              "Programming Returns the value False."' bool ;
 
-:persist regexref "Filter,Comparison [MODULELIST REGULAREXPRESSION] return only those modules in MODULELIST whose reference are matched by the REGULAREXPRESSION" swap copy GetReference call 2 pick regex isnotnone filter swap pop ;
-:persist refobj "Elements [MODULELIST] Return the Reference objects of the modules. refobj,textfromobj" Reference call ;
-:persist valobj "Elements [MODULELIST] Return the Value objects of the modules. valobj,textfromobjobj" Value call ;
-:persist setvisible "Elements [OBJECTLIST] Set the objects to visible." true SetVisible callargs pop ;
-:persist clearvisible "Elements [OBJECTLIST] Set the objects to invisible." false SetVisible callargs pop ;
-:persist refresh "System Refresh the display so that new elements will show up in the GUI. This also has the side effect of deselecting all items." pcbnew Refresh call ;
-:persist getnetcodefromname "Elements [NAMELISTOFLISTS] get netcodes from netnames i.e. 'GND split list'. setnetcode,setnetname,getallnetnames" board list swap GetNetcodeFromNetname callargs ;
-:persist setnetcode "Elements [TRACKLIST NETCODELIST] set netcodes of tracks. getnetcodefromname,setnetname,getallnetnames" SetNetCode callargs ;
-:persist setnetname "Elements [TRACKLIST NAMELISTOFLISTS] set netnames of tracks. getnetcodefromname,setnetcode,getallnetnames" getnetcodefromname setnetcode ;
-:persist getallnetnames "Elements Get a list of all the net names on the current board. getnetcodefromname,setnetcode,setnetname" board GetNetsByName call  __str__ call  ;
-:persist loadboard "Board [FILENAME] load board into pcbnew UI." list list pcbnew list swap LoadBoard callargs delist Board spush ;
-:persist getbottomrowcounts "Elements From the default board, get the Pads, Vias, TrackSegments, Nodes, and Nets numbers listed at the bottom of the pcbnew window" board list GetNodesCount call pads len list tracks ilist copy len swap copy VIA istype filter len swap 1 pick - int swap list swap extend extend getallnetnames len 1 - int 1 pick 3 pick extend swap extend swap pop swap pop print ;
+:persist filtervalregex     "Filter,Comparison [MODULELIST REGULAREXPRESSION] return only those modules in MODULELIST whose value are matched by the REGULAREXPRESSION" swap copy getvaltext 2 pull regex filter ;
+:persist filterrefregex     "Filter,Comparison [MODULELIST REGULAREXPRESSION] return only those modules in MODULELIST whose reference are matched by the REGULAREXPRESSION" swap copy getreftext 2 pull regex filter ;
+:persist getrefobj          "Elements [MODULELIST] Return the Reference objects of the modules. refobj,textfromobj" Reference call ;
+:persist getvalobj          "Elements [MODULELIST] Return the Value objects of the modules. valobj,textfromobjobj" Value call ;
+:persist getreftext         "Elements [MODULELIST] Return the Reference text of the modules. refobj,valtext" Reference call textfromobj ;
+:persist getvaltext         "Elements [MODULELIST] Return the Value text of the modules. valobj,reftext" Value call textfromobj ;
+:persist setvisible         "Elements [OBJECTLIST] Set the objects to visible." true SetVisible callargs pop ;
+:persist clearvisible       "Elements [OBJECTLIST] Set the objects to invisible." false SetVisible callargs pop ;
+:persist refresh            "System Refresh the display so that new elements will show up in the GUI. This also has the side effect of deselecting all items." pcbnew Refresh call ;
+
+:persist moduleelements     "Elements [MODULELIST] Gets all elements within the module: Pads, GraphicalItems, Value, and Reference. Zones will be supported in a future KiCAD version." copy Pads call    1 pick GraphicalItems call extend  1 pick Value call extend  1 pull Reference call extend ;
+
+:persist getnetcodefromname "Net [NAMELISTOFLISTS] Get netcodes from netnames i.e. 'GND split list'. setnetcode,setnetname,getallnetnames" board list swap GetNetcodeFromNetname callargs ;
+:persist setnetcode         "Net,Track [TRACKLIST NETCODELIST] (Untested) Set netcodes of tracks. getnetcodefromname,setnetname,getallnetnames" SetNetCode callargs ;
+:persist setnetname         "Net,Track [TRACKLIST NAMELISTOFLISTS] (Untested) Set netnames of tracks. getnetcodefromname,setnetcode,getallnetnames" getnetcodefromname list. setnetcode ;
+:persist netnames           "Net Get a list of all the net names on the current board. getnetcodefromname,setnetcode,setnetname" netnamemap  __str__ call  ;
+:persist netnamemap         "Net Get a dictionary-like object of all the NETINFO_ITEMs on the current board keyed by netname (string) getnetcodefromname,setnetcode,setnetname,maptodict" board GetNetsByName call ;
+:persist netcodemap         "Net Get a dictionary-like object of all the NETINFO_ITEMs on the current board keyed by netcode (int) getnetcodefromname,setnetcode,setnetname,maptodict" board GetNetsByNetcode call ;
+:persist netcount           "Net Get the number of nets on the board (netcodes are 0 through netcount-1)." board list GetNetCount call delist ;
+:persist getnetcode         "Net [NETINFO] Get NetCode from NETINFO object." GetNet call ;
+:persist getnetname         "Net [NETINFO] Get NetName from NETINFO_ITEM." GetNetname call ;
+:persist getnetclass        "Class [NETINFO] Get CLASSPTR from NETINFO object. For some reason, NETCLASSPTR list isn't printed in the KiCommand window." GetNetClass call ;
+:persist getnetinfo         "Net,Track [TRACK] Get NetInfo from TRACK object or list." GetNet call ;
+:persist setclass           "Class [NETINFO_ITEM CLASSPTR] (Untested) Set net to a netclass." SetClass callargs ;
+:persist syncnetclasses     "Class (Untested) Synchronize Nets to their respective netclasses." board SynchronizeNetsAndNetClasses call ;
+:persist maptodict          "Conversion [MAP] Converts a map (like NETINFO_MAP, NETCLASS_MAP, or NETNAME_MAP) to a visible dictionary with keys as strings instead of wxString. This bypasses not being able to access an 'asdict()' dictionary with a string. This isn't strictly necessary, but useful to see the values." list 'asdict call copy 'keys call delist '__str__ call swap 'values call delist dict ;
+:persist netclassmap        "Class Get all CLASSPTRs in a dictionary-like object keyed by netclass name. maptodict," board GetAllNetClasses call ;
+:persist getnetclassname    "Class [NETINFOLIST] Get the name of the NETCLASS associated with the objects. Objects can be NETINFO or any BOARD_CONNECTED_ITEM (TRACK, PAD, VIA, ZONE)." GetNetClass call GetName call ;
+:persist findnet            "Net [NETNAME_OR_CODE] Returns the NETINFO_ITEM givenb NETNAME (string) or NETCODE (int)." board list swap copy isstring ?list list. FindNet callargs print ;
+:persist gettracksinnet     "Draw,Net [NETCODE] Get TRACK list from NETCODE." board swap TracksInNet callargs ;
+:persist settracknetcode    "Draw,Net [TRACKLIST NETCODE] (Untested) Sets each track to NETCODE." int SetNet callargs ;
+
+:persist loadboard          "Board [FILENAME] load board into pcbnew UI." list list pcbnew list swap LoadBoard callargs delist Board spush ;
+:persist getbottomrowcounts "Elements From the default board, get the Pads, Vias, TrackSegments, Nodes, and Nets numbers listed at the bottom of the pcbnew window" board list GetNodesCount call pads len list tracks ilist copy len swap copy VIA istype filter len swap 1 pick - int swap list swap extend extend netnames len 1 - int 1 pick 3 pick extend swap extend swap pop swap pop board GetUnconnectedNetCount call append print ;

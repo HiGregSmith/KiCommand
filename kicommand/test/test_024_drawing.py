@@ -4,7 +4,7 @@ from kicommand.kicommand import kc
 class TestDrawing(unittest.TestCase):
 
     def test_getparams_drawparams(self):
-        self.assertEqual(kc('getparams'),{'h': 1000000.0, 'zp': 0, 'zt': 0, 't': 500000.0, 'w': 1000000.0, 'l': 'F.Cu'} )
+        self.assertEqual(kc('F.SilkS l param getparams'),{'h': 1000000.0, 'zp': 0, 'zt': 0, 't': 500000.0, 'w': 1000000.0, 'l': 'F.SilkS'} )
         self.assertEqual(kc('4,2,3 mm B.Cu drawparams getparams'),{'h': 3000000.0, 'zp': 0, 'zt': 0, 't': 4000000.0, 'w': 2000000.0, 'l': 'B.Cu'} )
         
     # def test_drawsegments(self):
@@ -76,7 +76,8 @@ class TestDrawing(unittest.TestCase):
         self.assertEqual(result,[])
         self.assertEqual(kc("clear 0,1 mm wxpoint 2,3 mm wxpoint concat 'x attr"),[0, 2000000])
         self.assertEqual(kc("clear 0,1 mm wxpoint 2,3 mm wxpoint concat 'y attr"),[1000000, 3000000])
-   
+
+
 if __name__ == '__main__':
     unittest.main()
    
