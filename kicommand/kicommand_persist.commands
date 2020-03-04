@@ -93,6 +93,11 @@
 :persist findnet            "Net [NETNAME_OR_CODE] Returns the NETINFO_ITEM list given NETNAME (string) or NETCODE (int) or list of names or codes. This function always returns a list." board swap copy isiter not ?list list. FindNet list callargs ;
 :persist gettracksinnet     "Draw,Net [NETCODE] Get TRACK list from NETCODE." board swap TracksInNet callargs ;
 :persist settracknetcode    "Draw,Net [TRACKLIST NETCODE] (Untested) Sets each track to NETCODE." int SetNet callargs ;
+:persist getfootprintname   "Elements [MODULES] Get the Footprint name of each MODULE." GetFPID call GetLibItemName call '__str__ call ;
+:persist filterfpregex      "Filter,Comparison [MODULELIST REGULAREXPRESSION] return only those modules in MODULELIST whose value are matched by the REGULAREXPRESSION" swap copy getfootprintname 2 pull regex filter ;
+:persist getlocked          "Elements [OBJECTLIST] Get the objects locked status." IsLocked call ;
+:persist setlocked          "Elements [OBJECTLIST] Set the objects to visible." true SetLocked callargs pop ;
+:persist clearlocked        "Elements [OBJECTLIST] Set the objects to invisible." false SetLocked callargs pop ;
 
 :persist loadboard          "Board [FILENAME] load board into pcbnew UI." pcbnew swap LoadBoard callargs Board spush ;
 :persist getbottomrowcounts "Elements From the default board, get the Pads, Vias, TrackSegments, Nodes, and Nets numbers listed at the bottom of the pcbnew window"
