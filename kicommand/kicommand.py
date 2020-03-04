@@ -2436,6 +2436,96 @@ class commands:
         prog = re.compile(regex_)
         return map(lambda s: prog.match(s),stringlist)
 #        '=': Command(2,lambda c: map(lambda x: x==c[1],c[0]),'Comparison',
+    def call(self,*c):
+        'Python [OBJECT_OR_LIST FUNCTION_NAME_OR_LIST] Execute each python FUNCTION on each member '
+        'of OBJECTLIST. Each of the inputs can optionally be a single object. '
+        'Results are grouped by object '
+        '(if both inputs are lists, then the results of calling each function on the first '
+        'object are in the first list '
+        'in the result list of lists). '
+        'To change the grouping by function instead, use the ZIP command. '
+        'To ungroup the results into a single-dimension list, use the FLATLIST command. '
+        'If only one of OBJECTLIST or FUNCTIONLIST is in fact a list, then only a '
+        'single-dimension list with all the results is returned. '
+        'The list of results are in the same order as the '
+        'original OBJECTLIST. The commands LIST, ZIP, and ZIP2 will be helpful here. '
+        'list,zip2,zip,flatlist,callargs'
+        DEBUG = False
+        # Possible permulations
+        # 000 OBJECT     FUNCTION    # execute FUNCTION on OBJECT
+        # 100 OBJECTLIST FUNCTION    # execute FUNCTION on each OBJECT with ARG, return list of results
+ 
+        # 011 OBJECT     FUNCTIONLIST # execute each FUNCTION on OBJECT, return as a list
+        # 111 OBJECTLIST FUNCTIONLIST # execute FUNCTION on each corresponding OBJECT.
+
+        if DEBUG:
+            output('argvalue: {}'.format(str(c)))
+        obj,func = c[0]
+        if DEBUG:
+            islist = (isiter(obj),isiter(func))
+            output('{}'.format(str(c[0])))
+            output('iter: {}'.format(islist))
+        
+        
+        if isiter(obj):
+            if isiter(func): # both are iter
+                return [[getattr(o,f)() for f in func] for o in obj]
+            else: # only obj is iter
+                return [getattr(o,func)() for o in obj]
+        else:
+            if isiter(func): # only func is iter
+                return [getattr(obj,f)() for f in func]
+            else: # neither are iter
+                return getattr(obj,func)()
+        
+        
+        if not isiter(obj) and not isiter(func):
+            if DEBUG:
+                output('neither obj nor func are iter')
+            return getattr(obj,func)()
+
+        if DEBUG:
+            output('neither obj nor func are iter')
+
+        # 10 OBJECTLIST  FUNCTION    
+        # 01 OBJECT      FUNCTIONLIST
+        # 11 OBJECTLIST  FUNCTIONLIST
+        
+        
+        if not isiter(obj):
+            obj = [obj]
+        if not isiter(func):
+            func = [func]
+        
+        if DEBUG:
+            islist = (isiter(obj),isiter(func))
+            output('Final:')
+            output('obj : {}'.format(str(obj)))
+            output('func: {}'.format(str(func)))
+            output('iter: {}'.format(islist))
+        
+        # now we have only case 11
+        # cycle all elements to the longest element
+        # if obj or func are iterators, then convert to list for 'len'
+        # obj = list(obj)
+        # func = list(func)
+        # callcount = max(len(obj),len(func))
+        # if DEBUG:
+            # output("Callcount: {}".format(callcount))
+            # cobj = cycle(obj)
+            # cfunc = cycle(func)
+            # output(
+            # str(
+            # [
+            # str((x[0],x[1]))
+            # for x in itertools.islice(itertools.izip(cobj,cfunc),callcount)
+            # ]
+            # ))
+            
+        #return map(lambda x: getattr(x[0],x[1])(),zip(cycle(obj),cycle(func),range(callcount)))
+        #return [map(lambda x: getattr(x[0],f)(),obj) for f in func]
+        return [[getattr(o,f)() for f in func] for o in obj]
+        
     def callargs(self,*c):
         'Python [OBJECTLIST ARGLISTOFLISTS FUNCTION] Execute python FUNCTION on each member '
         'of OBJECTLIST with arguments in ARGLISTOFLISTS. ARGLISTOFLISTS can be '
@@ -2444,7 +2534,9 @@ class commands:
         'OBJECTLIST. Returns the list of results in the same order as the '
         'original OBJECTLIST. The commands LIST and ZIP2 will be helpful '
         'here. ARGLISTOFLISTS can also be a single list or a single value, '
-        'in which case the value will be converted to a list of lists. list,zip2,zip'
+        'in which case the value will be converted to a list of lists. '
+        'Returns single object if both obj and func are single items, otherwise '
+        'will return a list of results. list,list.,zip2,zip,call'
         
         # Possible permulations
         # 010 OBJECT     ARGLIST FUNCTION    # execute FUNCTION once on OBJECT with single ARGLIST
@@ -2458,19 +2550,22 @@ class commands:
 
         #output('argvalue: {}'.format(str(c)))
         obj,arg,func = c[0]
-        islist = (isiter(obj),isiter(arg),isiter(func))
-        output('{}'.format(str(c[0])))
-        output('iter: {}'.format(islist))
+        if DEBUG:
+            islist = (isiter(obj),isiter(arg),isiter(func))
+            output('{}'.format(str(c[0])))
+            output('iter: {}'.format(islist))
         
         if not isiter(obj) and not isiter(func):
-            output('neither obj nor func are iter')
+            if DEBUG:
+                output('neither obj nor func are iter')
             if not isiter(arg):
-                output('arg is not iter')
+                if DEBUG:
+                    output('arg is not iter')
                 arg = [arg]
             return getattr(obj,func)(*arg)
 
-
-        output('neither obj nor func are iter')
+        if DEBUG:
+            output('neither obj nor func are iter')
         if not isiter(arg):
             arg = [[arg]]
 
@@ -2483,23 +2578,25 @@ class commands:
         if not isiter(func):
             func = [func]
         
-        islist = (isiter(obj),isiter(arg),isiter(func))
-        output('Final:')
-        output('obj : {}'.format(str(obj)))
-        output('arg : {}'.format(str(arg)))
-        output('func: {}'.format(str(func)))
-        output('iter: {}'.format(islist))
+        if DEBUG:
+            islist = (isiter(obj),isiter(arg),isiter(func))
+            output('Final:')
+            output('obj : {}'.format(str(obj)))
+            output('arg : {}'.format(str(arg)))
+            output('func: {}'.format(str(func)))
+            output('iter: {}'.format(islist))
         
         # now we have only case 111
         # cycle all elements to the longest element
         callcount = max(len(obj),len(arg),len(func))
-        output(
-        str(
-        [
-        (cycle(obj),cycle(func),cycle(arg))
-        for x in range(callcount)
-        ]
-        ))
+        if DEBUG:
+            output(
+            str(
+            [
+            (cycle(obj),cycle(func),cycle(arg))
+            for x in range(callcount)
+            ]
+            ))
         return map(lambda x: getattr(x[0],x[1])(*x[2]),zip(cycle(obj),cycle(func),cycle(arg),range(callcount)))
                 
     # OLD VERSIOM
@@ -3057,7 +3154,7 @@ _dictionary['command'].update({
     'connected': Command(2,lambda c: CONNECTED(*c),'Filter',
         '[WHOLE INITIAL] From objects in WHOLE, return those that are connected to objects in INITIAL (recursevely)'),
     'matchreference': Command(2,lambda c: filter(lambda x: x.GetReference() in c[1].split(','), c[0]),'Filter',
-        '[MODULES REFERENCE] Filter the MODULES and retain only those that match REFERENCE'),
+        '[MODULES REFERENCE] Filter the MODULES and retain only those that match REFERENCE. Note that REFERENCE can be a comma-separated list of names. If there is an embedded comma in a name, use filterrefregex instead.'),
     
     'extend': Command(2,lambda c: c[0].extend(c[1]) or c[0],'Stack',
         '[LIST1 LIST2] Join LIST1 and LIST2. append,concat'),
@@ -3117,7 +3214,9 @@ _dictionary['command'].update({
         'for module functions such as GraphicalItems and Pads. '
         'This is similar to call followed by flatlist. call,flatlist') ,
     'fcall': Command(1,lambda c: map(lambda x: x(), c[0]),'Python',
-        '[FUNCTIONLIST] Execute each python function in the FUNCTIONLIST on each member of LIST. Return the list of results in the same order as the original LIST.'),
+        '[FUNCTIONLIST] Execute each python function in the FUNCTIONLIST on each member of LIST. Return the list of results in the same order as the original LIST. '
+        'fcall differs from call in that call assumes the function is a attribute of the object identified by the named function (string), '
+        'whereas fcall assumes the function is a an actual Python function object. They also handle list arguments differently.'),
     'fcallargs': Command(2,
                 lambda c: 
                 map(lambda x: 
@@ -3131,16 +3230,25 @@ _dictionary['command'].update({
         'elements will be repeated (or truncated) to match the length of '
         'OBJECTLIST. Returns the list of results in the same order as the '
         'original OBJECTLIST. The commands LIST and ZIP2 will be helpful '
-        'here.'),
+        'here. '
+        'fcallargs differs from callargs in that call assumes the function is a attribute of the object identified by the named function (string), '
+        'whereas fcall assumes the function is a an actual Python function object. They also handle list arguments differently. list,zip,zip2,callargs'),
  
     
-    'call': Command(2,lambda c: map(lambda x: getattr(x,c[1])(), c[0]) if isiter(c[0]) else getattr(c[0],c[1])()
-        # if hasattr(c[0],'__getitem__') and hasattr(c[0][0],'__getitem__') else 
-        # map(lambda x: getattr(x,c[1])(), [c[0]])
-        # if hasattr(c[0],'__getitem__') else  
-        # map(lambda x: getattr(x,c[1])(), [[c[0]]])
+    'calld': Command(2,lambda c: map(lambda x: getattr(c[0],x)(), c[1]) if isiter(c[1]) else getattr(c[0],c[1])()
         ,'Python',
-        '[LIST FUNCTION] Execute python FUNCTION on each member of LIST. Return the list of results in the same order as the original LIST.'),
+        '[OBJECT FUNCTION_OR_LIST] Call direct. Execute python FUNCTION on OBJECT. Do not interpret the object as an iterable. '
+        'This is useful when OBJECT is an iterable and you want to call a function on the iterable itself '
+        '(such as calling keys or values on a dictionary). '
+        'Return either a single result or the list of results in the same order as '
+        'the original FUNCTION list. call,callargs,split'),
+    # 'call': Command(2,lambda c: map(lambda x: getattr(x,c[1])(), c[0]) if isiter(c[0]) else getattr(c[0],c[1])()
+        # # if hasattr(c[0],'__getitem__') and hasattr(c[0][0],'__getitem__') else 
+        # # map(lambda x: getattr(x,c[1])(), [c[0]])
+        # # if hasattr(c[0],'__getitem__') else  
+        # # map(lambda x: getattr(x,c[1])(), [[c[0]]])
+        # ,'Python',
+        # '[LIST FUNCTION] Execute python FUNCTION on each member of LIST. Return the list of results in the same order as the original LIST.'),
     'callfilter': Command(2,lambda c: filter(lambda x: getattr(x,c[1])(), c[0]),'Python',
         '[LIST FUNCTION] Execute python FUNCTION on each member of LIST. Return results that return True.'),
     'callnotfilter': Command(2,lambda c: filter(lambda x: not getattr(x,c[1])(), c[0]),'Python',

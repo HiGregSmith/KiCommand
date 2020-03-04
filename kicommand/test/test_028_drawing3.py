@@ -7,7 +7,9 @@ KICAD_INSTALL = os.path.dirname(os.path.dirname(os.path.abspath(sys.executable))
 
 
 class TestDrawing3(unittest.TestCase):
-
+    '''test various commands against one of the demo boards.
+    if the demo board changes, some of these will fail.
+    '''
 # Query
 # 'zones', 'tocommand', 'matchreference',  
 # 'notselected', 'onlayers',
@@ -16,8 +18,6 @@ class TestDrawing3(unittest.TestCase):
 # 'corners', 'angle',
 # 'deselect',  
 
-    # test various commands against one of the demo boards.
-    # if the demo board changes, some of these will fail.
     def test_areas_areacorners_findnet_getnetcode_gettracksinnet_areas_areacorners_findnet_getnetcode_gettracksinnet_referencetext_filterrefregex_getpads_netnames_regex_filter_filterrefregex_getreftext_iset(self):
         # self.maxDiff = None
         demodirectory = os.path.join(KICAD_INSTALL,'share','kicad','demos')
@@ -25,7 +25,7 @@ class TestDrawing3(unittest.TestCase):
         # # for root, dirs, files in os.walk(demodirectory):
             # # demoboards.extend([os.path.join(root,file) for file in files if file.endswith('.kicad_pcb')])
             
-        demoboard = os.path.join(demodirectory,r'complex_hierarchy','complex_hierarchy.kicad_pcb')
+        #demoboard = os.path.join(demodirectory,r'complex_hierarchy','complex_hierarchy.kicad_pcb')
         demoboard = os.path.join(demodirectory,r'kit-dev-coldfire-xilinx_5213',r'kit-dev-coldfire-xilinx_5213.kicad_pcb')
         load = kc('clear "%s" loadboard'%demoboard)
         # self.assertEqual(kc('areas'),[False])
@@ -79,6 +79,11 @@ class TestDrawing3(unittest.TestCase):
         )
         self.assertEqual(kc('modules R8 filterrefregex getpads GetCenter call flatlist'),
         [170627000, 117094000, 168717000, 117094000])
+        
+        self.assertEqual(kc('netclassmap Default sindex GetName,GetDescription,GetClearance,GetTrackWidth,GetViaDiameter,GetViaDrill,GetuViaDiameter,GetuViaDrill,GetDiffPairWidth,GetDiffPairGap split call'),
+        [u'Default', u'Ceci est la Netclass par d\xe9faut', 150000, 200000, 600000, 400000, 300000, 100000, 200000, 250000] 
+        )
+
         #self.assertEqual(kc('angle'),[False])
         #self.assertEqual(kc('matchreference'),[False])
         #self.assertEqual(kc('deselect'),[False])

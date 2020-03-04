@@ -40,6 +40,29 @@ class TestDrawing2(unittest.TestCase):
         self.assertEqual(kc('newboard board list 0,64,1 range list. GetLayerName callargs'),[u'F.Cu', u'In1.Cu', u'In2.Cu', u'In3.Cu', u'In4.Cu', u'In5.Cu', u'In6.Cu', u'In7.Cu', u'In8.Cu', u'In9.Cu', u'In10.Cu', u'In11.Cu', u'In12.Cu', u'In13.Cu', u'In14.Cu', u'In15.Cu', u'In16.Cu', u'In17.Cu', u'In18.Cu', u'In19.Cu', u'In20.Cu', u'In21.Cu', u'In22.Cu', u'In23.Cu', u'In24.Cu', u'In25.Cu', u'In26.Cu', u'In27.Cu', u'In28.Cu', u'In29.Cu', u'In30.Cu', u'B.Cu', u'B.Adhes', u'F.Adhes', u'B.Paste', u'F.Paste', u'B.SilkS', u'F.SilkS', u'B.Mask', u'F.Mask', u'Dwgs.User', u'Cmts.User', u'Eco1.User', u'Eco2.User', u'Edge.Cuts', u'Margin', u'B.CrtYd', u'F.CrtYd', u'B.Fab', u'F.Fab', u'Rescue', u'BAD INDEX!', u'BAD INDEX!',u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!'])
         #self.assertEqual(kc('newboard board list 0,64,1 range list. GetLayerName callargs'),[u'top_copper', u'In1.Cu', u'In2.Cu', u'In3.Cu', u'In4.Cu', u'In5.Cu', u'In6.Cu', u'In7.Cu', u'In8.Cu', u'In9.Cu', u'In10.Cu', u'In11.Cu', u'In12.Cu', u'In13.Cu', u'In14.Cu', u'In15.Cu', u'In16.Cu', u'In17.Cu', u'In18.Cu', u'In19.Cu', u'In20.Cu', u'In21.Cu', u'In22.Cu', u'In23.Cu', u'In24.Cu', u'In25.Cu', u'In26.Cu', u'In27.Cu', u'In28.Cu', u'In29.Cu', u'In30.Cu', u'bottom_copper', u'B.Adhes', u'F.Adhes', u'B.Paste', u'F.Paste', u'B.SilkS', u'F.SilkS', u'B.Mask', u'F.Mask', u'Dwgs.User', u'Cmts.User', u'Eco1.User', u'Eco2.User', u'Edge.Cuts', u'Margin', u'B.CrtYd', u'F.CrtYd', u'B.Fab', u'F.Fab', u'Rescue', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!', u'BAD INDEX!'])
         
+    def test_cut(self):
+        #result = kc('newboard clear 0,0,10,0 mm drawsegments delist 4,1,4,-1 mm drawsegments delist select',returnval=-1)
+        self.assertEqual(kc('newboard F.SilkS l param clear 0,0,10,0 mm drawsegments delist 4,1,4,-1 mm drawsegments delist select cut drawings ends flatlist flatlist'), [4000000, 0, 10000000, 0, 0, 0, 4000000, 0])
+        
+        # CALL: 'callfilter', 'calllist', 'callnotfilter', 'fcall', 
+        # FILTER: 'notselected', 'deselect', 'matchreference', 
+        # DIRECTORY: 'cd', 'cdproject', 'cduser', 'pwd',
+        # DRAW: 'drawarc', 'tosegments', 'tocommand', 'pad2draw', 'remove', 
+        #       'onlayers', 
+        # TEXT: 'drawtext',  'topoints', 
+        # MODIFYGeom: 'connect', 'connected', 'scale', 'setlength', 'angle', 'grid', 'makeangle', 'regular', 'rejoin', 'rotatepoints', 
+        # MODIFYAttr: 'setlayer', 'tocopper', 
+        # PRINT: 'fprintf', 
+        # AREAS: 'areas', 'zones', 'keepouts', 
+        # ELEMENTS: 'getpads', 
+        # QUERYGeom: 'areacorners', 'corners', 
+        
+# 'drawarctest', 'findnet', 'getboard', 'newnet', 'save', 
+
+
+# drawarc: set layer; draw an arc; select from returned EDA_ITEM; drawings selected; verify type; get/verify parameters
+# areas, zones
+
 if __name__ == '__main__':
     unittest.main()
    

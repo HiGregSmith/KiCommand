@@ -77,6 +77,15 @@ class TestPCBLoad(unittest.TestCase):
 
         self.assertEqual(kc('board list GetNetCount call delist'),53)
 
+    def test_netclassmap_call(self):
+        self.assertEqual(kc('netclassmap Default sindex GetClearance,GetTrackWidth,GetViaDiameter,GetViaDrill,GetuViaDiameter,GetuViaDrill,GetDiffPairWidth,GetDiffPairGap split call'),
+        #[150000, 200000, 600000, 400000, 300000, 100000, 200000, 250000] )
+        [300000, 400000, 1651000, 635000, 508000, 203200, 200000, 250000] )
+        
+    def test_netnamemap_calld_getnetcode_getnetname(self):
+        self.assertTrue(kc( 
+        "clear netnamemap 'keys calld 3 index '__str__ call copy netnamemap swap sindex getnetcode netcodemap swap sindex getnetname ="
+        ))
     #def test_interactive(self):
     #	code.interact(local=locals())
 
