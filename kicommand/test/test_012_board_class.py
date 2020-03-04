@@ -23,15 +23,17 @@ class TestBoardClass(unittest.TestCase):
         demodirectory = os.path.join(KICAD_INSTALL,'share','kicad','demos')
         file=os.path.join(demodirectory,'complex_hierarchy','complex_hierarchy.kicad_pcb')
         self.pcb = kc(
-            'clear pcbnew list "%s" list list LoadBoard callargs '
-            'delist Board spush board'%file)
+            'clear pcbnew "%s" LoadBoard callargs '
+            'Board spush board'%file)
         #self.pcb = LoadBoard("data/complex_hierarchy.kicad_pcb")
         self.TITLE="Test Board"
         self.COMMENT1="For load/save test"
         self.FILENAME=tempfile.mktemp()+".kicad_pcb"
 
     def test_PCBFindmodule_call_callargs(self):
-        reference = kc('board list P1 list list FindModule callargs GetReference call delist')
+        # reference = kc('board list P1 list list FindModule callargs GetReference call delist')
+        reference = kc('board P1 FindModule callargs GetReference call')
+        
         self.assertEqual(reference,'P1')
         # module = self.pcb.FindModule('P1')
         # self.assertEqual(module.GetReference(),'P1')
@@ -47,21 +49,22 @@ class TestBoardClass(unittest.TestCase):
         self.assertEqual(num,0)
         
         # Creates a new track
-        kc('clear pcbnew list board list list TRACK callargs')
-        
+        #kc('clear pcbnew list board list list TRACK callargs')
+        kc('clear pcbnew board TRACK callargs')
+ 
         # Adds track to Board
-        kc('Board scopy list swap list Add callargs')
+        kc('Board scopy swap Add callargs')
         
         # Obtain the number of tracks on this board 
-        num = kc('board list GetNumSegmTrack call delist')
+        num = kc('board GetNumSegmTrack call')
         self.assertEqual(num,1)
 
         #kc(':persist newadd "Elements [TYPE PARENT] Add create a element of TYPE (TRACK, PAD) and add it to the PARENT." pcbnew list swap board list list swap stack')
         # Creates a new track
         # Adds track to Board
-        kc('clear pcbnew list board list list TRACK callargs')
-        kc('board list swap list Add callargs')
-        num = kc('board list GetNumSegmTrack call delist')
+        kc('clear pcbnew board  TRACK callargs')
+        kc('board swap Add callargs')
+        num = kc('board GetNumSegmTrack call')
         self.assertEqual(num,2)
 
         # pcb = BOARD()
@@ -183,7 +186,7 @@ class TestBoardClass(unittest.TestCase):
         os.remove(self.FILENAME)
 
     def test_PCBLayernamesetget(self):
-        pcb = kc('newboard board list 31 int list %s list concat list SetLayerName callargs board'%BACK_COPPER)
+        pcb = kc('newboard board 31 int list %s list concat SetLayerName callargs board'%BACK_COPPER)
         # pcb = BOARD()
         # pcb.SetLayerName(31, BACK_COPPER)
         self.assertEqual(pcb.GetLayerName(31), BACK_COPPER)
@@ -201,7 +204,7 @@ class TestBoardClass(unittest.TestCase):
         #b_cu_id = pcb.GetLayerID(B_CU)
         #pcb.SetLayerName(b_cu_id, NEW_NAME)
         kc('%d,%s'%(b_cu_id,NEW_NAME))
-        kc('board list swap int list SetLayerName callargs pop')
+        kc('board swap int SetLayerName callargs pop')
 
         # ensure we can get the ID for the new name
         self.assertEqual(pcb.GetLayerID(NEW_NAME), b_cu_id)

@@ -22,8 +22,8 @@ class TestPCBLoad(unittest.TestCase):
         kc('Board spop clear')
     def setUp(self):
         file = demopath
-        self.pcb = kc('clear pcbnew list "%s" list list LoadBoard callargs '
-            'delist Board spush Board scopy'%file)
+        self.pcb = kc('clear pcbnew "%s" LoadBoard callargs '
+            'Board spush Board scopy'%file)
         
     def test_LoadBoard(self):
         # for root, dirs, files in os.walk("demodirectory"):

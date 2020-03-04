@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import os, sys
 import unittest
 from kicommand.kicommand import kc
@@ -24,17 +26,17 @@ class TestSVGClass(unittest.TestCase):
         svgfiles = []
         for root, dirs, files in os.walk(svgdirectory):
             demoboards.extend([os.path.join(root,file) for file in files if file.endswith('.txt')])
-        print '\nSVG file results:'
-        # print '\n'.join(demoboards)
+        print ('\nSVG file results:')
+        # print('\n'.join(demoboards))
         fullresult = {}
         for svgfile in svgfiles:
-            #print demoboard
+            #print(demoboard)
             result = kc('clear "%s" loadboard getbottomrowcounts stack'%demoboard)
             # remove install directory from printing demoboard
             fullresult[os.path.relpath(demoboard,KICAD_INSTALL)] = result
-        print fullresult
+        print(fullresult)
         valuefile = os.path.join(os.path.dirname(__file__),'demoboard_values.txt')
-        print "Reading comparison values from", valuefile
+        print("Reading comparison values from", valuefile)
         with open(valuefile,'r') as f:
            compare = eval(f.read())
         # now we need to compare the two dictionaries: fullresult and compare

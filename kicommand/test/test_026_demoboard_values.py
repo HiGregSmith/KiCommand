@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import os, sys
 import unittest
 from kicommand.kicommand import kc
@@ -13,7 +15,7 @@ class TestBoardClass(unittest.TestCase):
         demoboards = []
         for root, dirs, files in os.walk(demodirectory):
             demoboards.extend([os.path.join(root,file) for file in files if file.endswith('.kicad_pcb')])
-        print '\nDemo board results:'
+        print('\nDemo board results:')
         # print '\n'.join(demoboards)
         fullresult = {}
         for demoboard in demoboards:
@@ -21,9 +23,9 @@ class TestBoardClass(unittest.TestCase):
             result = kc('clear "%s" loadboard getbottomrowcounts stack'%demoboard)
             # remove install directory from printing demoboard
             fullresult[os.path.relpath(demoboard,KICAD_INSTALL)] = result
-        print fullresult
+        print(fullresult)
         valuefile = os.path.join(os.path.dirname(__file__),'demoboard_values.txt')
-        print "Reading comparison values from", valuefile
+        print("Reading comparison values from", valuefile)
         with open(valuefile,'r') as f:
            compare = eval(f.read())
         # now we need to compare the two dictionaries: fullresult and compare

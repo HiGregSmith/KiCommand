@@ -222,6 +222,13 @@ DrawParams = collections.namedtuple('DrawParams','t w h l zt zp')
 # clear toptextobj selected copy GetThickness call swap topoints pairwise Dwgs.User tosegments
 
 #uc.execute(uc.string)
+
+def decodestring(encoded_string):
+    if sys.version_info >= (3,):
+        return bytes(encoded_string, "utf-8").decode("unicode_escape") # python3 
+    else:
+        return encoded_string.decode('string_escape') # python2
+
 def SHOWPARAM(values,keys):
     return _user_stacks['drawparams']
     
@@ -349,29 +356,29 @@ def kc(commandstring,returnval=0):
         #output(str(['%s:%d'%(dictname,len(_dictionary[dictname])) for dictname in ('user','persist','command')]))
 		
         commandlines = commandstring.splitlines()
-        commands = []
+        commandslist = []
         for commandstring in commandlines:
             #print('processing {%s}'%commandstring)
-            #commands = []
+            #commandslist = []
             qend = 0
             while True:
                 qindex = commandstring.find('"',qend)
                 if qindex == -1:
                     break;
                 # wx.MessageDialog(None,'PRE '+commandstring[qend:qindex-1]).ShowModal()
-                commands.extend(commandstring[qend:qindex].split())
+                commandslist.extend(commandstring[qend:qindex].split())
                 qend = commandstring.find('"',qindex+1)
                 if qend == -1:
                     raise SyntaxError('A line must contain an even number of double quotes.')
-                commands.append(commandstring[qindex+1:qend])
+                commandslist.append(commandstring[qindex+1:qend])
                 # wx.MessageDialog(None,'Q {'+commandstring[qindex+1:qend]+'}').ShowModal()
                 qend += 1
                 
             # wx.MessageDialog(None,'END {'+commandstring[qend:]+'}').ShowModal()
-            commands.extend(commandstring[qend:].split())
-        # wx.MessageDialog(None,'{'+'}{'.join(commands)+'}').ShowModal()
-        #print('{','}{'.join(commands),'}')
-        for command in commands:
+            commandslist.extend(commandstring[qend:].split())
+        # wx.MessageDialog(None,'{'+'}{'.join(commandslist)+'}').ShowModal()
+        #print('{','}{'.join(commandslist),'}')
+        for command in commandslist:
             
             if command == ';':
                 _compile_mode = False
@@ -390,7 +397,8 @@ def kc(commandstring,returnval=0):
                     if firstspace != -1:
                         cathelp = cdef.pop(0)
                         cat = cathelp[:firstspace]
-                        help = cathelp[firstspace+1:]
+                        help = cathelp[firstspace+1:]                        
+                        help = decodestring(inspect.cleandoc(' '.join(help.split())))
                         _dictionary[_newcommanddictionary][comm] = UserCommand(cdef,cat,help)
                     #output( "COMMAND %s DEFINITION %s\nCategory: {%s} Help: {%s}"%(comm,cdef,cat,help))
                     else:
@@ -432,7 +440,7 @@ def kc(commandstring,returnval=0):
                     else:
                         result = commandToExecute.execute([]) # TODO should this be [] ?
                         
-                    if result != None:
+                    if result is not None:
                         _stack.append(result)
                 elif isinstance(commandToExecute,UserCommand):
                     #output('%s is UserCommand'%command)
@@ -475,23 +483,24 @@ class KiCommandAction(pcbnew.ActionPlugin):
     __instance = None
     @classmethod
     def getInstance(selfclass):
-       if selfclass.__instance == None:
+       if selfclass.__instance is None:
            selfclass()
        return selfclass.__instance
         
     @classmethod
     def getWindow(selfclass):
-       if selfclass.__instance == None:
+       if selfclass.__instance is None:
            selfclass()
        #print ('Dead: ',isinstance(selfclass.__window,wx._core._wxPyDeadObject))
-       if selfclass.__window == None or isinstance(selfclass.__window,wx._core._wxPyDeadObject):
-           selfclass.getInstance().Run()           
+       # Weird: _wxPyDeadObject is gone from wx._core recently
+       if selfclass.__window is None or (hasattr(wx._core,'_wxPyDeadObject') and isinstance(selfclass.__window,wx._core._wxPyDeadObject)):
+           selfclass.getInstance().Run()
            
        return selfclass.__window
         
     def __init__(self):
         self.defaults()
-        if self.__class__.__instance != None:
+        if self.__class__.__instance is not None:
             raise Exception("Use getInstance() to get the singleton instance.")
         else:
             self.__class__.__instance = self
@@ -2241,7 +2250,7 @@ class commands:
     # https://www.w3.org/TR/SVG11/paths.html#PathDataGeneralInformation
 
     def fromsvg(self,inputs):
-        """Geometry,Conversion [PATH_D_ATTRIBUTE SCALE] Converts SVG path element d attribute
+        """Geometry,Conversion [PATH_D_ATTRIBUTE SCALE] Converts SVG path element "d attribute"
             to a list of coordinates suitable for drawelements. Applies SCALE
             to all coordinates."""
         #print(path)
@@ -2408,10 +2417,7 @@ class commands:
 
     def escaped(self,encoded_string):
         "Conversion [ESCAPED_STRING] Interpret escaped string according to Python escape rules."
-        if sys.version_info >= (3,):
-            return bytes(encoded_string[0], "utf-8").decode("unicode_escape") # python3 
-        else:
-            return encoded_string[0].decode('string_escape') # python2
+        return decodestring(encoded_string[0])
     def pwd(self,empty):
         "Programming Return the present working directory."
         return os.getcwd()
@@ -2437,19 +2443,15 @@ class commands:
         return map(lambda s: prog.match(s),stringlist)
 #        '=': Command(2,lambda c: map(lambda x: x==c[1],c[0]),'Comparison',
     def call(self,*c):
-        'Python [OBJECT_OR_LIST FUNCTION_NAME_OR_LIST] Execute each python FUNCTION on each member '
-        'of OBJECTLIST. Each of the inputs can optionally be a single object. '
-        'Results are grouped by object '
-        '(if both inputs are lists, then the results of calling each function on the first '
-        'object are in the first list '
-        'in the result list of lists). '
-        'To change the grouping by function instead, use the ZIP command. '
-        'To ungroup the results into a single-dimension list, use the FLATLIST command. '
-        'If only one of OBJECTLIST or FUNCTIONLIST is in fact a list, then only a '
-        'single-dimension list with all the results is returned. '
-        'The list of results are in the same order as the '
-        'original OBJECTLIST. The commands LIST, ZIP, and ZIP2 will be helpful here. '
-        'list,zip2,zip,flatlist,callargs'
+        '''Python [OBJECT_OR_LIST FUNCTION_NAME_OR_LIST] Execute each python FUNCTION on 
+        each member of OBJECTLIST. Each of the inputs can optionally be a single object. 
+        Results are grouped by object (if both inputs are lists, then the results of calling 
+        each function on the first object are in the first list in the result list of lists). 
+        To change the grouping by function instead, use the ZIP command. To ungroup the results into 
+        a single-dimension list, use the FLATLIST command. If only one of OBJECTLIST or FUNCTIONLIST 
+        is in fact a list, then only a single-dimension list with all the results is returned. The list 
+        of results are in the same order as the original OBJECTLIST. The commands LIST, ZIP, and ZIP2 
+        will be helpful here. list,zip2,zip,flatlist,callarg'''
         DEBUG = False
         # Possible permulations
         # 000 OBJECT     FUNCTION    # execute FUNCTION on OBJECT
@@ -2548,8 +2550,82 @@ class commands:
         # 011 OBJECT     ARGLOL FUNCTIONLIST # execute each FUNCTION on OBJECT for each ARG list in LOL
         # 111 OBJECTLIST ARGLOL FUNCTIONLIST # execute FUNCTION on each OBJECT using each ARGLIST in turn.
 
+
+        # Want to handle the following situations
+        # Case 000 OBJECT ARG FUNCTION
+        #    Return result of OBJECT.FUNCTION(ARG)
+        # Case 010 OBJECT ARGLIST FUNCTION
+        #    OBJECT.FUNCTION(ARG0,ARG1)
+        #    [OBJECT.FUNCTION(ARG0), OBJECT.FUNCTION(ARG1)
+        # Case 100 OBJECTLIST ARG FUNCTION
+        #    [OBJECT0.FUNCTION(ARG), OBJECT1.FUNCTION(ARG)]
+        #  
+        # Case 110 OBJECTLIST ARGLOL FUNCTION
+        #    [OBJECT0.FUNCTION(ARG00,ARG01), OBJECT1.FUNCTION(ARG10,ARG11)]
+        # Case 111 OBJECTLIST ARGLOL FUNCTIONLIST
+        #    [[OBJECT0.FUNCTION0(ARG00,ARG01), OBJECT0.FUNCTION1(ARG10,ARG11)],[OBJECT1.FUNCTION0(ARG00,ARG01), OBJECT1.FUNCTION1(ARG10,ARG11)]]
+        # Case 011 OBJECT ARGLOL FUNCTIONLIST
+        #    [OBJECT.FUNCTION0(ARG00,ARG01), OBJECT.FUNCTION1(ARG10,ARG11)]
+        # There's no good way to differentiate a list from a list of lists.
+        # It's probably a good idea to assume case 010 is an ARGLOL and not an ARGLIST.
+        # Because if ARGLOL is assumed, then you can create it from ARGLIST by preceding with "list".
+        # One difference is in the results. You'd have to also delist the results.
+        # If ARGLIST was assumed, there's not a good way to create the situation where you want an ARGLOL.
+        # Is there a situation where you'd repeated call the same function on the same object with different arguments?
+        # Maybe in the case of a rotate or move command, where you are essentially concatenating commands.
+        # But it is useful for getting a list of results like with FindNet from multiple netcodes (or names).
+        
+        # I think the basic rule is that any ARGLIST mirrors FUNCTION list, so that parallel arrays are used.
+        # If it's a single FUNCTION, then it's a single ARGLIST. If it is a FUNCTIONLIST, then ARGLOL is assumed.
+        # ARG0 (which could itself be a list) is paired with FUNCTION0
+        # In case one list is smaller, the function list is cycled (or truncated) to match 
+        # the number of arglists given within arglol.
+        # This has the useful effect of calling the same function with multiple arguments.
+        # Results for the following, for example, 
+        # [[ARG00,ARG01],[ARG10,ARG11],[ARG20,ARG21]] [FUNCTION0,FUNCTION1]
+        #    [OBJECT0.FUNCTION0(ARG00,ARG01), OBJECT0.FUNCTION1(ARG10,ARG11), OBJECT0.FUNCTION0(ARG20,ARG21)]
+        #
+        # FUNCTION2 is ignored because no matching argument in ARGLOL:
+        # [[ARG00,ARG01],[ARG10,ARG11]] [FUNCTION0,FUNCTION1,FUNCTION2] 
+        #    [OBJECT0.FUNCTION0(ARG00,ARG01), OBJECT0.FUNCTION1(ARG10,ARG11)]
+        # 
+        # Note that For any function in FUNCTIONLIST that take no arguments, 
+        # an empty list in that position within the ARGLOL can be used.
+        
+        # Examples:
+        # board 0 int FindNet callargs print
+        
+        # A single function assumes the argument is for one call. These are errors:
+        # board 0,1 int FindNet callargs print 
+        # board 0,1 int list. FindNet callargs print 
+        
+        # Here's the correct version:
+        # board 0,1 int list. FindNet list callargs print 
+        # function (FindNet) is repeated for each argumentlist in arglol.
+        # list. creates a list from each member of the given list. [1,2] becomes [[1],[2]]
+        # Useful for preparing arguments for single-argument functions called multiple times.
+        
         #output('argvalue: {}'.format(str(c)))
         obj,arg,func = c[0]
+        
+        
+        if isiter(obj):
+            if isiter(func): # both are iter
+                return [[getattr(o,f)(*a) for f,a in itertools.izip(itertools.cycle(func),arg)] for o in obj]
+            else: # only obj is iter
+                if not isiter(arg):
+                    arg = [arg]
+                return [getattr(o,func)(*arg) for o in obj]
+        else:
+            if isiter(func): # only func is iter
+                return [getattr(obj,f)(*a) for f,a in itertools.izip(itertools.cycle(func),arg)]
+            else: # neither are iter
+                if not isiter(arg):
+                    arg = [arg]
+                return getattr(obj,func)(*arg)
+                
+                
+                
         if DEBUG:
             islist = (isiter(obj),isiter(arg),isiter(func))
             output('{}'.format(str(c[0])))
@@ -2689,6 +2765,8 @@ for c in filter(lambda x: not x.startswith('__') and hasattr(getattr(commands,x)
             # print(c,':',arg)
         # else:
             # print(c,':',numarg)
+            
+        doc = decodestring(inspect.cleandoc(' '.join(doc.split())))
         _dictionary['command'][c.lower()] = Command(nargs,f,category,doc)
 
 

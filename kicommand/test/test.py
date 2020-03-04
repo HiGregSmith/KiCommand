@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 #import unittest
 import kicommand 
 #from kicommand.kicommand import kc
@@ -74,7 +76,7 @@ class TestKiCommand(unittest.TestCase):
         untested = untested - set(('*','+','-','/','+.','*.','index.','<','=','?','list.','attr.')) - set((':persist',';',':'))
         untestedlist = list(untested)
         untestedlist.sort()
-        print 'untested',untestedlist
+        print('untested',untestedlist)
 
     def test_SKIP_stack_print_printf_undock(self):
         # Don't really know how to test these

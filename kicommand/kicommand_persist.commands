@@ -1,4 +1,4 @@
-:persist wxpoint            "Conversion [X,Y] Create a  wxpoint" pcbnew list swap list wxPoint callargs ;
+:persist wxpoint            "Conversion [X,Y] Create a  wxpoint" pcbnew swap wxPoint callargs ;
 :persist toptextobj         "Elements Get the top level text objects." drawings EDA_TEXT filtertype ;
 :persist valuetextobj       "Elements Get all module's Value text objects." modules Value call ;
 :persist referencetextobj   "Elements Get all module's Reference text objects." modules Reference call ;
@@ -56,7 +56,8 @@
 :persist range              "Programming [START,STOP,INC] Returns a list of numbers" builtins 'range sindex list stack swap int list fcallargs delist ;
 :persist len                "Conversion [LIST] return the length of the list" ilist list list builtins 'len sindex list swap stack fcallargs sum stack ;
 :persist newboard           "Elements Create a new empty board and make it the current board." pcbnew list BOARD call delist Board spush ;
-:persist newadd             "Elements [TYPE PARENT] Add a new element of TYPE to PARENT. Returns the new module." list copy pcbnew list swap list 3 pick callargs 1 pick 1 pick list Add callargs pop swap pop swap pop delist ;
+:persist newadd             "Elements [TYPE PARENT] Add a new element of TYPE to PARENT. Returns the new module." copy pcbnew swap 3 pick callargs 1 pick 1 pick Add callargs swap pop swap pop ;
+:persist newadd_old             "Elements [TYPE PARENT] Add a new element of TYPE to PARENT. Returns the new module." list copy pcbnew list swap list 3 pick callargs 1 pick 1 pick list Add callargs pop swap pop swap pop delist ;
 
 :persist true               "Programming Returns the value True." 1 bool ;
 :persist false              "Programming Returns the value False."' bool ;
@@ -89,9 +90,15 @@
 :persist maptodict          "Conversion [MAP] Converts a map (like NETINFO_MAP, NETCLASS_MAP, or NETNAME_MAP) to a visible dictionary with keys as strings instead of wxString. This bypasses not being able to access an 'asdict()' dictionary with a string. This isn't strictly necessary, but useful to see the values." list 'asdict call copy 'keys call delist '__str__ call swap 'values call delist dict ;
 :persist netclassmap        "Class Get all CLASSPTRs in a dictionary-like object keyed by netclass name. maptodict," board GetAllNetClasses call ;
 :persist getnetclassname    "Class [NETINFOLIST] Get the name of the NETCLASS associated with the objects. Objects can be NETINFO or any BOARD_CONNECTED_ITEM (TRACK, PAD, VIA, ZONE)." GetNetClass call GetName call ;
-:persist findnet            "Net [NETNAME_OR_CODE] Returns the NETINFO_ITEM givenb NETNAME (string) or NETCODE (int)." board list swap copy isstring ?list list. FindNet callargs print ;
+:persist findnet            "Net [NETNAME_OR_CODE] Returns the NETINFO_ITEM list given NETNAME (string) or NETCODE (int) or list of names or codes. This function always returns a list." board swap copy isiter not ?list list. FindNet list callargs ;
 :persist gettracksinnet     "Draw,Net [NETCODE] Get TRACK list from NETCODE." board swap TracksInNet callargs ;
 :persist settracknetcode    "Draw,Net [TRACKLIST NETCODE] (Untested) Sets each track to NETCODE." int SetNet callargs ;
 
-:persist loadboard          "Board [FILENAME] load board into pcbnew UI." list list pcbnew list swap LoadBoard callargs delist Board spush ;
-:persist getbottomrowcounts "Elements From the default board, get the Pads, Vias, TrackSegments, Nodes, and Nets numbers listed at the bottom of the pcbnew window" board list GetNodesCount call pads len list tracks ilist copy len swap copy VIA istype filter len swap 1 pick - int swap list swap extend extend netnames len 1 - int 1 pick 3 pick extend swap extend swap pop swap pop board GetUnconnectedNetCount call append print ;
+:persist loadboard          "Board [FILENAME] load board into pcbnew UI." pcbnew swap LoadBoard callargs Board spush ;
+:persist getbottomrowcounts "Elements From the default board, get the Pads, Vias, TrackSegments, Nodes, and Nets numbers listed at the bottom of the pcbnew window"
+        board list GetNodesCount call pads len list tracks ilist copy len 
+        swap copy VIA istype filter len 
+        swap 1 pick - int swap list swap extend extend 
+        netnames len 1 - int 
+        1 pick 3 pick extend swap extend swap pop swap pop 
+        board GetUnconnectedNetCount call append print ;

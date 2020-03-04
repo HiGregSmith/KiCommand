@@ -35,7 +35,7 @@ class TestDrawing(unittest.TestCase):
         # self.assertEqual(result,[])
         
         # Test two lists of numbers:
-        result = kc('clear 0,0,1,1 mm list 2,2,3,3 mm list concat drawsegments',returnval=-1)
+        result = kc('clear 0,0,1,1 mm list 2,2,3,3 mm list extend drawsegments',returnval=-1)
         self.assertEqual(len(result),1)
         self.assertEqual(len(result[0][0]),1)
         self.assertEqual(len(result[0][1]),1)
@@ -55,27 +55,27 @@ class TestDrawing(unittest.TestCase):
         result = kc('delist remove',returnval=-1)
         self.assertEqual(result,[])
         
-        result = kc('clear 0,0,1000000,1000000 list 2000000,2000000,3000000,3000000 list concat drawsegments',returnval=-1)
+        result = kc('clear 0,0,1000000,1000000 list 2000000,2000000,3000000,3000000 list extend drawsegments',returnval=-1)
         self.assertEqual(len(result),1)
         self.assertEqual(len(result[0][0]),1)
         self.assertEqual(len(result[0][1]),1)
         result = kc('copy 1 index remove 0 index remove',returnval=-1)
         self.assertEqual(result,[])
         
-        result = kc('clear 0,0 mm wxpoint 1,1 mm wxpoint concat 2,2 mm wxpoint concat 3,3 mm wxpoint concat drawsegments',returnval=-1)
+        result = kc('clear 0,0 mm wxpoint list 1,1 mm wxpoint append 2,2 mm wxpoint append 3,3 mm wxpoint append drawsegments',returnval=-1)
         self.assertEqual(len(result),1)
         self.assertEqual(len(result[0][0]),3)
         result = kc('delist remove',returnval=-1)
         self.assertEqual(result,[])
         
-        result = kc('clear 0,0 mm wxpoint 1,1 mm wxpoint concat list 2,2 mm wxpoint 3,3 mm wxpoint concat list concat drawsegments',returnval=-1)
+        result = kc('clear 0,0 mm wxpoint list 1,1 mm wxpoint append list 2,2 mm wxpoint list 3,3 mm wxpoint append append drawsegments',returnval=-1)
         self.assertEqual(len(result),1)
         self.assertEqual(len(result[0][0]),1)
         self.assertEqual(len(result[0][1]),1)
         result = kc('copy 1 index remove 0 index remove',returnval=-1)
         self.assertEqual(result,[])
-        self.assertEqual(kc("clear 0,1 mm wxpoint 2,3 mm wxpoint concat 'x attr"),[0, 2000000])
-        self.assertEqual(kc("clear 0,1 mm wxpoint 2,3 mm wxpoint concat 'y attr"),[1000000, 3000000])
+        self.assertEqual(kc("clear 0,1 mm wxpoint list 2,3 mm wxpoint append 'x attr"),[0, 2000000])
+        self.assertEqual(kc("clear 0,1 mm wxpoint list 2,3 mm wxpoint append 'y attr"),[1000000, 3000000])
 
 
 if __name__ == '__main__':
