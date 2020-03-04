@@ -18,7 +18,7 @@ class TestDrawing3(unittest.TestCase):
 # 'corners', 'angle',
 # 'deselect',  
 
-    def test_areas_areacorners_findnet_getnetcode_gettracksinnet_areas_areacorners_findnet_getnetcode_gettracksinnet_referencetext_filterrefregex_getpads_netnames_regex_filter_filterrefregex_getreftext_iset(self):
+    def test_areas_areacorners_findnet_getnetcode_gettracksinnet_areas_areacorners_findnet_getnetname_gettracksinnet_referencetext_filterrefregex_getpads_netnames_regex_filter_filterrefregex_getreftext_iset_netcount_rangeto(self):
         # self.maxDiff = None
         demodirectory = os.path.join(KICAD_INSTALL,'share','kicad','demos')
         # # demoboards = []
@@ -84,6 +84,7 @@ class TestDrawing3(unittest.TestCase):
         [u'Default', u'Ceci est la Netclass par d\xe9faut', 150000, 200000, 600000, 400000, 300000, 100000, 200000, 250000] 
         )
 
+        self.assertTrue(kc('netcount rangeto copy list swap findnet getnetname findnet getnetcode = delist'))
         #self.assertEqual(kc('angle'),[False])
         #self.assertEqual(kc('matchreference'),[False])
         #self.assertEqual(kc('deselect'),[False])
