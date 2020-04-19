@@ -34,16 +34,157 @@ def iterate_tests(test_suite_or_case):
         # sys.exit(1)
 
 
-
 def runtests():
     global testsuite,fullsuite
     testsuite = unittest.TestLoader().discover('kicommand.test',pattern="test_*.py")
     suite = unittest.TestLoader().loadTestsFromTestCase(TestKiCommand)
+    fromfile = unittest.TestLoader().loadTestsFromTestCase(TestsFromFile)
     #unittest.TextTestRunner(verbosity=2).run(suite)
-    fullsuite = unittest.TestSuite((suite,testsuite))
+    fullsuite = unittest.TestSuite((suite,testsuite,fromfile))
+    #fullsuite = fromfile
     results = unittest.TextTestRunner(verbosity=100).run(fullsuite)
 
+# import pickle
 
+# def writetestsfile(tests):
+    # kicommand_config = os.path.join(pcbnew.GetKicadConfigPath(),'kicommand')
+    # if not os.path.exists(kicommand_config):
+        # os.mkdir(kicommand_config)
+    # testsfile = os.path.join(os.path.dirname(__file__),'tests.txt')
+    # teststempfile = os.path.join(kicommand_config,'tests.txt')
+
+def createtestsfile(tests=None):
+    testsfile = os.path.join(os.path.dirname(__file__),'tests.txt')
+    kicommand_config = os.path.join(pcbnew.GetKicadConfigPath(),'kicommand')
+    #print('dirpath: ',', '.join(dir(os.path)))
+    #print('Config exists? ',os.path.exists(kicommand_config))
+    if not os.path.exists(kicommand_config):
+        os.mkdir(kicommand_config)
+    
+    teststempfile = os.path.join(kicommand_config,'tests.txt')
+    #if os.exists(kicommand_config):
+    
+    # structure of dictionary
+    # {'testid':('description','command string',expected_result), ...}
+    # Execute in testid order
+    # strings and results
+    if tests is None:
+        tests = {
+            '00010':('single value','0','0')
+            ,'00020':('int','0 int',0)
+            ,'00030':('int single-value list','0 int list',[0])
+            ,'00040':('int list','0,1 int',[0,1])
+            ,'00050':('string list','0,1 split',['0','1'])
+            ,'00060':('raw string','0\n1',r'0\n1')
+            ,'00070':('encoded','0\n1 encoded','0\n1')
+            }
+    # with open(teststempfile, "wb") as fp:   #Pickling
+        # pickle.dump(tests, fp)
+    
+    # with open(teststempfile,'r') as f:
+           # tests = eval(f.read())
+           
+   # print tests structure in a way that eval() works and is easy to hand edit.
+    with open(teststempfile,'w') as f:
+        f.write("""# TESTID:['Short Description',r'input to kc()','expected result top of stack']
+# Place "None" (without quotes) as the expected result to auto-generate result.
+# After running, the actual result file can be coped over the golden test results.
+# All tests should be independent and leave only one item on the stack.
+
+""")
+        f.write('{\n')
+        for testid,testitem in sorted(tests.iteritems(), key = lambda (k, v) : k):
+            f.write(_get_testitem_string(testid,testitem))
+            # f.write('{}:[{},\n        r{},\n        {}\n        ],\n\n'.format(
+                # *[repr(x) for x in [testid,testitem[0],testitem[1],testitem[2]]]))
+        f.write('}')
+    #with open(testsfile, "rb") as fp:   # Unpickling
+    #    tests = pickle.load(fp)
+    return teststempfile
+    
+# https://stackoverflow.com/a/2799009
+class TestsFromFile(unittest.TestCase):
+    pass
+
+def create_test_method(testid,testitem):
+    def test_method(self):
+        self.assertEqual(kc('clear '+testitem[1]),testitem[2])
+    return test_method
+
+_test_golden_file = os.path.abspath(os.path.join(os.path.dirname(__file__),'tests.txt'))
+with open(_test_golden_file,'r') as f:
+    testdict = eval(f.read())
+
+msgmaxlen = 0
+_tests_updated = False
+
+def _get_testitem_string(testid,testitem):
+    return '{}:[{},\n        {},\n        {}\n        ],\n\n'.format(
+        *[repr(x) for x in [testid,testitem[0],testitem[1],testitem[2]]])
+
+for testid,testitem in testdict.iteritems():
+    msgmaxlen = max(msgmaxlen,len(testitem[0]))
+    # Update testitem result if current result is None
+    if testitem[2] is None:
+        testdict[testid][2] = kc(testitem[1])
+        print( '# Manually verify result:\n',_get_testitem_string(testid,testitem))
+
+        _tests_updated = True
+
+if _tests_updated:
+   tempfilename = createtestsfile(tests=testdict)
+   print('#Test results have been updated. If all tests succeed, copy the new file\n{}\n# over the golden copy in\n{}\n'.format(tempfilename,_test_golden_file))
+        
+for testid,testitem in sorted(testdict.iteritems(), key=lambda (k,v):k):
+    test_method = create_test_method (testid,testitem)
+    test_method.__name__ = 'test_{1} {2:<{0}}'.format(msgmaxlen,testid,testitem[0])
+    setattr (TestsFromFile, test_method.__name__, test_method)
+    
+    
+class TestsFromFile2(unittest.TestCase):
+    # iterator=None
+    # testdict = None
+    # def __iter__(self):
+        # # if not self.iterator:
+            # # self.iterator = iter([test_DontSkip])
+            # # yield self.iterator.next()
+        # # return
+        # if self.testdict is None:
+            # with open(os.path.join(os.path.dirname(__file__),'tests.txt'),'r') as f:
+                # self.testdict = eval(f.read())
+                
+        # for testid,testitem in sorted(testdict.iteritems(), key=lambda (k,v):k):
+            # yield lambda x: self.singletest(testid,testitem)
+        # return iter([self.test_TestsFromFile])
+        
+    # def savetests(self):
+        # testsfile = os.path.join(os.path.dirname(__file__),'tests.txt')
+        # with open(testsfile, "rb") as fp:   # Unpickling
+            # tests = pickle.load(fp)
+            
+        # for testid,testitem in sorted(tests.iteritems(), key = lambda (k, v) : k):
+            # print("Test: {}, {}".format(testid,testitem[0]))
+            # self.AssertEqual(kc(testitem[1]),testitem[2])
+
+# C:\Program Files\KiCad\share\kicad\scripting\plugins\kicommand\test
+
+    def singletest(self,testid,testitem):
+        print("Test: {} - {}\n    String: {}\n    Expect: {}".format(testid,testitem[0],testitem[1],testitem[2]))
+        self.assertEqual(kc(testitem[1]),testitem[2],)
+    def test_DontSkip(self):
+        self.assertEqual(kc('1'),'1')
+    def test_ShouldSkip(self):
+        self.assertEqual(kc('0'),'0')
+    # def test_TestsFromFile(self):
+        # testsfile = os.path.join(os.path.dirname(__file__),'tests.txt')
+        # print("Reading tests from", testsfile)
+        # with open(testsfile,'r') as f:
+           # testdict = eval(f.read())
+
+        # for testid,testitem in sorted(testdict.iteritems(), key=lambda (k,v):k):
+            # print("Test: {} - {}\n    String: {}\n    Expect: {}".format(testid,testitem[0],testitem[1],testitem[2]))
+            # self.assertEqual(kc(testitem[1]),testitem[2],)
+            
 class TestKiCommand(unittest.TestCase):
         
     def test_Coverage(self):

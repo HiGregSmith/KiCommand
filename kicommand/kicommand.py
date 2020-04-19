@@ -275,12 +275,24 @@ class gui(kicommand_gui.kicommand_panel):
                (exc_tb.tb_lineno, str(e), traceback.format_exc())).ShowModal()
 
 import inspect
-USERSAVEPATH = os.path.join(os.path.expanduser('~'),'kicad','kicommand')
-os.chdir(USERSAVEPATH)
+_KICAD_CONFIG = pcbnew.GetKicadConfigPath()
+
+_KICOMMAND_CONFIG = os.path.join(pcbnew.GetKicadConfigPath(),'kicommand')
+if not os.path.exists(_KICAD_CONFIG):
+    os.mkdir(_KICAD_CONFIG)
+    
+if not os.path.exists(_KICOMMAND_CONFIG):
+    os.mkdir(_KICOMMAND_CONFIG)
+
+#teststempfile = os.path.join(kicommand_config,'tests.txt')
+
+USERSAVEPATH = _KICOMMAND_CONFIG
+USERSAVEPATHOLD = os.path.join(os.path.expanduser('~'),'kicad','kicommand')
+#os.chdir(USERSAVEPATH)
 
 KICOMMAND_MODULE_DIR = os.path.dirname(inspect.stack()[0][1])
 LOADABLE_DIR = os.path.join(KICOMMAND_MODULE_DIR,'loadable')
-USERLOADPATH = USERSAVEPATH+':'+LOADABLE_DIR
+USERLOADPATH = ':'.join((_KICOMMAND_CONFIG,USERSAVEPATHOLD,LOADABLE_DIR))
 # PROJECTPATH = os.path.dirname(pcbnew.GetBoard().GetFileName())
 # for i in range(len(inspect.stack())):
     # print(i,inspect.stack()[i][1])
@@ -320,16 +332,24 @@ _user_stacks['drawparams'] = {
 
 def output(*args):
 
+    MAXTEXTBOXTEXT = 32000
     w = KiCommandAction.getWindow()
     if w is None or getattr(w,'outputbox',None) is None:
+        # wx.MessageDialog(None,'outputbox not defined').ShowModal()
         # Here's the simple 'print' definition of output
         for arg in args:
             print(arg,end=' ')
         print()
     else:
-        for arg in args:
-            w.outputbox.AppendText(str(arg)+' ')
-        w.outputbox.AppendText('\n')
+        #text = w.outputbox.Value
+        tempstring = ' '.join(map(str,args))
+        tempstring += '\n'
+        if (len(tempstring)) > MAXTEXTBOXTEXT:
+            tempstring = tempstring[int(max(0,len(tempstring)-MAXTEXTBOXTEXT)):]
+            #start = len(tempstring)-MAXTEXTBOXTEXT
+            w.outputbox.Value = tempstring
+        else:
+            w.outputbox.AppendText(tempstring)
     
 
 def kc(commandstring,returnval=0):

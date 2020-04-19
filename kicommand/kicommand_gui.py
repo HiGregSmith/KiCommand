@@ -34,7 +34,7 @@ class kicommand_panel ( wx.Panel ):
 		self.entrybox = wx.ComboBox( self.m_panel1, wx.ID_ANY, u"help", wx.DefaultPosition, wx.DefaultSize, entryboxChoices, wx.CB_DROPDOWN|wx.TE_PROCESS_ENTER )
 		bSizer2.Add( self.entrybox, 0, wx.ALL|wx.EXPAND, 5 )
 		
-		self.outputbox = wx.richtext.RichTextCtrl( self.m_panel1, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0|wx.VSCROLL|wx.HSCROLL|wx.NO_BORDER|wx.WANTS_CHARS )
+		self.outputbox = wx.richtext.RichTextCtrl( self.m_panel1, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0|wx.VSCROLL|wx.HSCROLL|wx.NO_BORDER|wx.WANTS_CHARS|wx.TE_RICH )
 		bSizer2.Add( self.outputbox, 1, wx.EXPAND |wx.ALL, 5 )
 		
 		
