@@ -4,11 +4,12 @@ KiCommand allows simple command strings to be executed within pcbnew.
 Command strings consist of a variety commands that retrieve, filter, and
 process Kicad objects. Commands are very easily added with a simple syntax.
 
-[Development and discussion thread](https://forum.kicad.info/t/7694) on KiCAD forums.
+[Tutorial and Wiki](https://forum.kicad.info/t/21008). The tutorial will teach you step by step how to use KiCommand. Have a read through the document you're viewing now as a basic introduction to installation, launching unit tests, using the stack, and data types. Then go check out the Tutorial and Wiki.
 
-[Tutorial and Wiki](https://forum.kicad.info/t/21008). The tutorial assumes no prior knowledge and will teach you step by step how to use KiCommand.
+Post any comments, questions or discussions to the [Development and discussion thread](https://forum.kicad.info/t/7694) on KiCAD forums.
 
-Here are a few short examples:
+
+Here are a few short examples of command line input:
 
 - **pads setselect**
     - select all pads
@@ -71,7 +72,7 @@ or detailed help of all commands (**helpall**)
 # Overview
 
 With KiCommand, arguments to commands are entered *before* the command. Any results
-from the command are then used as an argument to the *next* command. This way,
+from the command can then be used as an argument to the *next* command. This way,
 you can chain together commands in a way that often makes sense. This 
 programming structure is
 called *[stack-based programming](https://en.wikipedia.org/wiki/Stack-oriented_programming_language)*.
@@ -154,6 +155,10 @@ to the stack. If you need to execute several commands on the same argument, the
 
 KiCommand allows you to define your own commands, too, using a colon (**:**) to begin the command definition. More information on defining commands can be found in the [Tutorial and Wiki](https://forum.kicad.info/t/21008).
 
+### Conditional commands
+
+Any command can be made conditional by beginning the command with the question mark (**?**). This will pop the stack and execute the given command only if the argument **pop**ped value evaluates to True. To execute multiple commands in a row conditionally,, wrap the conditional commands within a new user command.
+
 ### General Conventions
 
 KiCommand follows a general set of conventions:
@@ -217,3 +222,7 @@ and commands in the *Comparison* category.
 - Mixed Case items are all arguments (Python functions and objects look like arguments in the Command String). Mixed case arguments means they also do not get interpreted as commands.
 - Lower case commands do not conflict with the namespaces of most Python commands/variables nor do they conflict with arguments.
 - Note that these capitalization conventions almost eliminate the need for using single quote (it still may be necessary in some cases).
+
+# Next Up: Tutorial
+
+This document serves as a basic introduction. For much more information in a tutorial format, read the [Tutorial and Wiki](https://forum.kicad.info/t/21008).
