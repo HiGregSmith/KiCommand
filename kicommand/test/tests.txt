@@ -1,4 +1,4 @@
-# TESTID:['Short Description',r'input to kc()','expected result top of stack']
+# TESTID:['Short Description',r'input to kc()','expected result top of stack','commands tested'(optional)]
 # Place "None" (without quotes) as the expected result to auto-generate result.
 # After running, the actual result file can be coped over the golden test results.
 # All tests should be independent and leave only one item on the stack.
@@ -6,37 +6,44 @@
 {
 '00010':['single value',
         '0',
-        '0'
+        '0',
+        '',
         ],
 
 '00020':['int',
         '0 int',
-        0
+        0,
+        'int',
         ],
 
 '00030':['int single-value list',
         '0 int list',
-        [0]
+        [0],
+        'int list',
         ],
 
 '00040':['int list',
         '0,1 int',
-        None
+        None,
+        'int list',
         ],
 
 '00050':['string list',
         '0,1 split',
-        ['0', '1']
+        ['0', '1'],
+        'split',
         ],
 
 '00060':['raw string',
         '0\\n1',
-        '0\\n1'
+        '0\\n1',
+        '',
         ],
 
 '00070':['escaped',
         '0\\n1 escaped',
-        '0\n1'
+        '0\n1',
+        'escaped',
         ],
 
 }

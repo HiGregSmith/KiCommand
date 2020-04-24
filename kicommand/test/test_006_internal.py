@@ -15,7 +15,7 @@ class TestInternal(unittest.TestCase):
         k = datetime.datetime.strptime(kcnow,'%a %b %d %H:%M:%S %Y')
         n = datetime.datetime(*time.localtime()[:-2])
         delta = (n-k).total_seconds()
-        self.assertTrue(0 < delta < 10)
+        self.assertTrue(0 <= delta < 10,"now command expected to be within 10 seconds of current time. Delta was {} seconds.".format(delta))
 
         #now = time.localtime()
         #datetime.datetime.strptime(time.asctime(),'%a %b %d %H:%M:%S %Y')

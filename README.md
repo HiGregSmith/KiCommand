@@ -152,51 +152,7 @@ to the stack. If you need to execute several commands on the same argument, the
 
 ### Defining commands
 
-KiCommand maintains several different dictionaries from which it obtains command
-definitions. These dictionaries are named **user**, **persist**, and **command**.
-
-The **command** dictionary contains python functions within the KiCommand source
-code and cannot be detailed further from the command line. You can view the source
-code to see how these commands are constructed.
-
-The **persist** dictionary contains python functions defined by default and
-supplied with KiCommand. These commands are constructed from other KiCommand
-commands and can be viewed with the **see** and **seeall** commands. These
-commands can be created with the **:persist** command, but it is not
-recommended that users use this function.
-
-The **user** dictionary contains commands defined by the user and constructed
-as a *command string* from other commands. These can also be viewed with the
-**see** and **seeall** commands. These
-commands can be created with the **:** command and they can be **save**ed and
-**load**ed from the user's **~/kicad/commands** directory.
-
-It should be noted that **persist** commands can redefine **command** commands
-and **user** commands can redefine both **persist** and **command** commands.
-
-The following commands are helpful for investigating this area of KiCommand:
-
-- **see** - shows a specific command string from the **user** or **persist** dictionaries.
-- **seeall** - shows all commands in the **user** and **persist** dictionaries.
-- **helpcat** - shows all categories of commands **after** they are superceded. If
-any commands are redefined by **user** or **persist** commands, then only the
-redefined command is shown.
-- **explain** - shows the help text for any command that defines it. It is hightly
-recommended that any defined commands include a category and help text.
-- **: commandname ;** - removes the definition of **commandname** from the **user** dictionary.
-- **: ;** - removes all definitions from the **user** dictionary.
-
-The recommended way of defining a new command is:
-
-**: commandname "Category [Argument1 Argument2] Help Text To Explain the Command, including the  arguments." arguments and commands seealso_command1,seealso_command2 ;**
-
-
-An example is like this:
-**: setselect "Elements [OBJECTLIST] Sets the objects as Selected. clearselect,select" SetSelected call ;**
-
-After defined in this way, the **'seteselect explain** command will show the help text. Note the initial single quote mark. The newly defined **setselect** command will be listed in the *Elements* category with the **helpcat** command.
-
-More examples can be seen in the *kicommand_persist.commands* file or by using the **seeall** command.
+KiCommand allows you to define your own commands, too, using a colon (**:**) to begin the command definition. More information on defining commands can be found in the [Tutorial and Wiki](https://forum.kicad.info/t/21008).
 
 ### General Conventions
 

@@ -70,13 +70,13 @@ def createtestsfile(tests=None):
     # strings and results
     if tests is None:
         tests = {
-            '00010':('single value','0','0')
-            ,'00020':('int','0 int',0)
-            ,'00030':('int single-value list','0 int list',[0])
-            ,'00040':('int list','0,1 int',[0,1])
-            ,'00050':('string list','0,1 split',['0','1'])
-            ,'00060':('raw string','0\n1',r'0\n1')
-            ,'00070':('encoded','0\n1 encoded','0\n1')
+            '00010':('single value','0','0','')
+            ,'00020':('int','0 int',0,'int')
+            ,'00030':('int single-value list','0 int list',[0],'int list')
+            ,'00040':('int list','0,1 int',[0,1],'int')
+            ,'00050':('string list','0,1 split',['0','1'],'split')
+            ,'00060':('raw string','0\n1',r'0\n1','')
+            ,'00070':('encoded','0\n1 encoded','0\n1','encoded')
             }
     # with open(teststempfile, "wb") as fp:   #Pickling
         # pickle.dump(tests, fp)
@@ -86,7 +86,7 @@ def createtestsfile(tests=None):
            
    # print tests structure in a way that eval() works and is easy to hand edit.
     with open(teststempfile,'w') as f:
-        f.write("""# TESTID:['Short Description',r'input to kc()','expected result top of stack']
+        f.write("""# TESTID:['Short Description',r'input to kc()','expected result top of stack','commands tested'(optional)]
 # Place "None" (without quotes) as the expected result to auto-generate result.
 # After running, the actual result file can be coped over the golden test results.
 # All tests should be independent and leave only one item on the stack.
@@ -119,8 +119,8 @@ msgmaxlen = 0
 _tests_updated = False
 
 def _get_testitem_string(testid,testitem):
-    return '{}:[{},\n        {},\n        {}\n        ],\n\n'.format(
-        *[repr(x) for x in [testid,testitem[0],testitem[1],testitem[2]]])
+    return '{}:[{},\n        {},\n        {},\n        {}\n        ],\n\n'.format(
+        *[repr(x) for x in [testid,testitem[0],testitem[1],testitem[2],testitem[3]]])
 
 for testid,testitem in testdict.iteritems():
     msgmaxlen = max(msgmaxlen,len(testitem[0]))
@@ -138,7 +138,10 @@ if _tests_updated:
 for testid,testitem in sorted(testdict.iteritems(), key=lambda (k,v):k):
     test_method = create_test_method (testid,testitem)
     test_method.__name__ = 'test_{1} {2:<{0}}'.format(msgmaxlen,testid,testitem[0])
+    if len(testitem)>3:
+        setattr(test_method,'_commandstested',testitem[3])
     setattr (TestsFromFile, test_method.__name__, test_method)
+
     
     
 class TestsFromFile2(unittest.TestCase):
@@ -186,15 +189,32 @@ class TestsFromFile2(unittest.TestCase):
             # self.assertEqual(kc(testitem[1]),testitem[2],)
             
 class TestKiCommand(unittest.TestCase):
+    def get_tested_commands(self,suite):
+        testedcommandsunderscore = [getattr(test, '_commandstested','a').replace(' ','_') for test in iterate_tests(fullsuite)]
+        #method = getattr(self,test._testMethodName)
+        ctested = [getattr(getattr(test,test._testMethodName), '_commandstested',test._testMethodName).replace(' ','_') for test in iterate_tests(fullsuite)]
+        #print('ctested',ctested)
         
+        # testedcommandsunderscore = [getattr(test, '_testMethodName').replace(' ','_') for test in iterate_tests(fullsuite)]
+        testedcommandsarray = [c.split('_') for c in ctested if c is not '']
+        testedcommands = [name for names in testedcommandsarray for name in names]
+        #print('tested',testedcommands)
+        #dircommand = [dir(test) for test in iterate_tests(fullsuite)]
+        return testedcommands
+        # print('dir',dircommand)
+        # testedcommandsunderscore = [getattr(test, '_commandstested',test._testMethodName).replace(' ','_') for test in iterate_tests(fullsuite)]
+        # testedcommands = [c.split('_') for c in testedcommandsunderscore]
+        #testedcommands = [test._testMethodName.split('_') for test in iterate_tests(fullsuite) ]
+        #print('all tested',testedcommands)
     def test_Coverage(self):
         global testsuite,fullsuite
+        
         prefix = 'test_'
         #fulltestnames = filter(lambda x: x.startswith(prefix),dir(self))
-        testnames = [test._testMethodName.split('_') for test in iterate_tests(fullsuite)]
+        #testnames = [test._testMethodName.split('_') for test in iterate_tests(fullsuite)]
 		# flatten the list of lists into a single-dimension list
-        testnames = [item for sublist in testnames for item in sublist]
-
+        #testnames = [item for sublist in testnames for item in sublist]
+        testnames = self.get_tested_commands(fullsuite)
 
         #print "Testnames: \n", testnames
 
@@ -229,6 +249,17 @@ class TestKiCommand(unittest.TestCase):
 # just "import kicommand.test" and view the output in the
 # Script Console window.
 runtests()
+
+# testing only TestKiCommand tests
+# testsuite = unittest.TestLoader().discover('kicommand.test',pattern="test_*.py")
+# suite = unittest.TestLoader().loadTestsFromTestCase(TestKiCommand)
+# fromfile = unittest.TestLoader().loadTestsFromTestCase(TestsFromFile)
+# #unittest.TextTestRunner(verbosity=2).run(suite)
+# fullsuite = unittest.TestSuite((suite,testsuite,fromfile))
+# runner = unittest.TextTestRunner()
+# runner.run(suite)
+# end test one -----------
+
 # testsuite = unittest.TestLoader().discover('kicommand.test',pattern="test_*.py")
 # suite = unittest.TestLoader().loadTestsFromTestCase(TestKiCommand)
 # unittest.TextTestRunner(verbosity=2).run(suite)
