@@ -24,13 +24,15 @@ class TestInternal(unittest.TestCase):
         # timetuple = time.localtime([time])
         # timetuple()
     def test_load(self):
-        pcommands = ['moduletextobj', 'wxpoint', 'outlinetoptext', 'setselect', 'referencetextobj', 'outlinepads', 'valuetextobj', 'drawparams', 'textfromobj', 'referencetext', 'toptextobj', 'outlinetext', 'clearallselected', 'not', 'orthogonal', 'copy', 'clearselect', 'texttosegments', 'valuetext']
-        self.assertTrue(set(pcommands) <= set(kicommand.kicommand._dictionary['persist'].keys()))
+        pcommands = ['moduletextobj', 'wxpoint', 'setselect', 'referencetextobj', 'outlinepads', 'valuetextobj', 'drawparams', 'textfromobj', 'referencetext', 'toptextobj', 'outlinetext', 'clearallselected', 'not', 'orthogonal', 'copy', 'clearselect', 'texttosegments', 'valuetext']
+        self.assertEqual(set(pcommands) - set(kicommand.kicommand._dictionary['persist'].keys()),set([]))
+        # self.assertTrue(set(pcommands) <= set(kicommand.kicommand._dictionary['persist'].keys()))
         self.assertFalse(set(['thiscommand doesnt exist']) < set(kicommand.kicommand._dictionary['persist'].keys()))
 
     def test_help_helpcat_explain_see_seeall_helpall(self):
         result = kc("clear help All helpcat 'help explain seeall 'bool see helpall",returnval=-1)
-        self.assertEqual(result,[])
+        self.assertTrue(result is None or not bool(result) or len(result) == 0)
+        #self.assertEqual(result,[])
         
 
 if __name__ == '__main__':

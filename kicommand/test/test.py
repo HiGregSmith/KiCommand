@@ -33,15 +33,25 @@ def iterate_tests(test_suite_or_case):
     # if not results.wasSuccessful():
         # sys.exit(1)
 
-
-def runtests():
+    
+def gettests():
     global testsuite,fullsuite
     testsuite = unittest.TestLoader().discover('kicommand.test',pattern="test_*.py")
     suite = unittest.TestLoader().loadTestsFromTestCase(TestKiCommand)
     fromfile = unittest.TestLoader().loadTestsFromTestCase(TestsFromFile)
     #unittest.TextTestRunner(verbosity=2).run(suite)
     fullsuite = unittest.TestSuite((suite,testsuite,fromfile))
-    #fullsuite = fromfile
+
+
+# kicommand.test.runtests_singly()
+
+def runtests_singly():
+    gettests()
+    for t in kicommand.test.iterate_tests(kicommand.test.fullsuite):
+        unittest.TextTestRunner(verbosity=100).run(t)
+def runtests():
+    global testsuite,fullsuite
+    gettests()
     results = unittest.TextTestRunner(verbosity=100).run(fullsuite)
 
 # import pickle
@@ -133,7 +143,7 @@ for testid,testitem in testdict.iteritems():
 
 if _tests_updated:
    tempfilename = createtestsfile(tests=testdict)
-   print('#Test results have been updated. If all tests succeed, copy the new file\n{}\n# over the golden copy in\n{}\n'.format(tempfilename,_test_golden_file))
+   print('#Test results have been updated. If all tests succeed, copy the new file\n{}\n#over the golden copy in\n{}\n'.format(tempfilename,_test_golden_file))
         
 for testid,testitem in sorted(testdict.iteritems(), key=lambda (k,v):k):
     test_method = create_test_method (testid,testitem)

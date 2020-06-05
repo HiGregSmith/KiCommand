@@ -7,43 +7,43 @@
 '00010':['single value',
         '0',
         '0',
-        '',
+        ''
         ],
 
 '00020':['int',
         '0 int',
         0,
-        'int',
+        'int'
         ],
 
 '00030':['int single-value list',
         '0 int list',
         [0],
-        'int list',
+        'int list'
         ],
 
 '00040':['int list',
         '0,1 int',
-        None,
-        'int list',
+        [0, 1],
+        'int list'
         ],
 
 '00050':['string list',
         '0,1 split',
         ['0', '1'],
-        'split',
+        'split'
         ],
 
 '00060':['raw string',
         '0\\n1',
         '0\\n1',
-        '',
+        ''
         ],
 
 '00070':['escaped',
         '0\\n1 escaped',
         '0\n1',
-        'escaped',
+        'escaped'
         ],
 
 }

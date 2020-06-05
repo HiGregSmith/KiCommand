@@ -11,7 +11,7 @@ class TestProgramming(unittest.TestCase):
     def test_pop(self):
         self.assertEqual(kc('1 2 3 pop int'),2)
     def test_spush_spop_scopy_scopyall_sdelete(self):
-        self.assertEqual(kc('1 int Testing spush clear Testing scopyall'),[1])
+        self.assertEqual(kc('Testing sdelete 1 int Testing spush clear Testing scopyall'),[1])
         self.assertEqual(kc('1 int Testing spush 2 int Testing spush Testing scopyall'),[1,1,2])
         self.assertEqual(kc('1 int Testing spush 2 int Testing spush Testing spop'),2)
         self.assertEqual(kc('1 int Testing spush 2 int Testing spush Testing scopy'),2)

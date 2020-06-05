@@ -4,6 +4,7 @@ from kicommand.kicommand import kc
 class TestDrawing(unittest.TestCase):
 
     def test_getparams_drawparams(self):
+        self.assertEqual(kc('1,0.5,1 mm h,t,w param 0,0 int zp,zt param F.SilkS l param getparams'),{'h': 1000000.0, 'zp': 0, 'zt': 0, 't': 500000.0, 'w': 1000000.0, 'l': 'F.SilkS'} )
         self.assertEqual(kc('F.SilkS l param getparams'),{'h': 1000000.0, 'zp': 0, 'zt': 0, 't': 500000.0, 'w': 1000000.0, 'l': 'F.SilkS'} )
         self.assertEqual(kc('4,2,3 mm B.Cu drawparams getparams'),{'h': 3000000.0, 'zp': 0, 'zt': 0, 't': 4000000.0, 'w': 2000000.0, 'l': 'B.Cu'} )
         

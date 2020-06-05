@@ -501,6 +501,7 @@ class KiCommandAction(pcbnew.ActionPlugin):
     # global aplugin
     __window = None
     __instance = None
+    # if window is "X"ed, __window == wx._core._wxPyDeadObject
     @classmethod
     def getInstance(selfclass):
        if selfclass.__instance is None:
@@ -509,14 +510,18 @@ class KiCommandAction(pcbnew.ActionPlugin):
         
     @classmethod
     def getWindow(selfclass):
-       if selfclass.__instance is None:
-           selfclass()
-       #print ('Dead: ',isinstance(selfclass.__window,wx._core._wxPyDeadObject))
-       # Weird: _wxPyDeadObject is gone from wx._core recently
-       if selfclass.__window is None or (hasattr(wx._core,'_wxPyDeadObject') and isinstance(selfclass.__window,wx._core._wxPyDeadObject)):
-           selfclass.getInstance().Run()
-           
-       return selfclass.__window
+        if selfclass.__instance is None:
+            selfclass()
+        #print ('Dead: ',isinstance(selfclass.__window,wx._core._wxPyDeadObject))
+        # Weird: _wxPyDeadObject is gone from wx._core recently
+        if selfclass.__window is None or (hasattr(wx._core,'_wxPyDeadObject') and isinstance(selfclass.__window,wx._core._wxPyDeadObject)):
+            selfclass.getInstance().Run()
+        if isinstance(selfclass.__window,wx.Panel) and not selfclass.__window.IsShown():
+            selfclass.__window.Destroy()
+            selfclass.getInstance().Run()
+            
+
+        return selfclass.__window
         
     def __init__(self):
         self.defaults()
@@ -549,11 +554,28 @@ class KiCommandAction(pcbnew.ActionPlugin):
                 # wx.GetTopLevelWindows()
             # )[0]
         # better for Python3
+        # Test for the __window variable. Is it Shown()?
+        # wx.MessageDialog(None,'Window {}'.format(self.__class__.__window)).ShowModal()
+        # try:
+            # wx.MessageDialog(None,'Window {}'.format(self.__class__.__window.IsShown())).ShowModal()
+        # except:
+            # pass
+
         if self.__class__.__window:
-            # bring to front
-            #self.__class__.__window.Restore()
-            self.__class__.__window.Raise()
-            return
+            if self.__class__.__window.IsShown():
+                # bring to front
+                #self.__class__.__window.Restore()
+                self.__class__.__window.Raise()
+                return
+            #else:
+                # Using Destroy() here crashes KiCAD.
+                # I'm not sure how to get rid of the reference to the window.
+                # Below, we just replace the reference to __window
+                # with a new window.
+                # This might be a source of a memory leak.
+                #self.__class__.__window.Destroy()
+                #time.sleep(1)
+            
         self.__class__.__window=gui(parent)
         pane = wx.aui.AuiPaneInfo()                       \
          .Caption( u"KiCommand" )                   \
@@ -688,7 +710,7 @@ def draw_segmentlist(input, layer=pcbnew.Eco2_User, thickness=0.015*pcbnew.IU_PE
     # convert a list of strings (possibly comma separated) into a list of floats
     if isinstance(input[0],basestring):
         temp = []
-        input = map(lambda y: floatnoerror(y),map(lambda x: temp.extend(x),[i.split(',') for i in input]))
+        input = map(lambda y: safe_float(y),map(lambda x: temp.extend(x),[i.split(',') for i in input]))
     # Now, input is a list of
     # 1) individual floats,
     # 2) wxPoints,
@@ -753,7 +775,7 @@ def drawlistofpolylines(input_lop,layer,thickness):
         if not hasattr(numbers[0],'__getitem__'):
             #print('zip triggered')
             a=iter(numbers)
-            numbers = [(intnoerror(x),intnoerror(y)) for x,y in zip(a, a)]
+            numbers = [(safe_int(x),safe_int(y)) for x,y in zip(a, a)]
         for i in range(len(numbers)-1):
             s = numbers[i]
             e = numbers[i+1]
@@ -789,7 +811,7 @@ def close_enough(a,b):
 def GRID(dseglist,grid):
     grid = int(grid)
     for seg in dseglist:
-            if isinstance(seg,pcbnew.DRAWSEGMENT):
+            if isinstance(seg, (pcbnew.DRAWSEGMENT, pcbnew.TRACK) ):
                 for gp,sp in ((seg.GetStart,seg.SetStart),(seg.GetEnd,seg.SetEnd)):
                     p = gp()
                     newp=pcbnew.wxPoint(int(round(p[0]/grid)*grid),int(round(p[1]/grid)*grid))
@@ -1258,6 +1280,12 @@ def MAKEANGLE(dseglist,degrees):
     output('makeangle not implemented.')
     return dseglist
 
+def point_iterator(seglist):
+    for seg in seglist:
+        yield seg.GetStart()
+        yield seg.GetEnd()
+        
+        
 def connected_pairs(dseglist):
     segs_by_box = defaultdict(set)
     boxes_by_seg = {}
@@ -1324,11 +1352,13 @@ def draw_arc_to_segments(radius,dseglist):
     # output('len(segments)=%s'%len(dseglist))
     done = []
     pairs = connected_pairs(dseglist)
+    if isiter(radius):
+        radius = radius[0]
     for seg, segset in pairs.iteritems():
         for seg2 in segset:
             s = set((seg,seg2))
             if s not in done:
-                draw_arc_to_lines(radius[0],seg,seg2)
+                draw_arc_to_lines(radius,seg,seg2)
                 done.append(s)
     # for ordered in orderedlol:
         # for i in range(len(ordered)-1):
@@ -1762,7 +1792,7 @@ def draw_text(text,pos,size,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER_
     
 # 'Hello 100,100 MM 10,10 MM 1 MM F.SilkS DRAWTEXT'
 # '0,0,100,100 MM DRAWSEGMENTS'
-    
+    # output("Text at position {}, {}".format(pos[0],pos[1]))
     size = pcbnew.wxSize(size[0],size[1])
     pos = pcbnew.wxPoint(pos[0],pos[1])
     board = getBoard()
@@ -1777,7 +1807,7 @@ def draw_text(text,pos,size,layer=pcbnew.Dwgs_User,thickness=0.15*pcbnew.IU_PER_
     #ds.SetLayer(layer)
     #ds.SetWidth(max(1,int(thickness)))
     
-    ds.SetPosition(pos) # wxPoint
+    ds.SetTextPos(pos) # wxPoint
     ds.SetTextAngle(0.0)
     ds.SetText(text)
     ds.SetThickness(thickness)
@@ -2113,6 +2143,36 @@ def CUT():
     #cutter.DeleteStructure()
     return None
 def DRAWPARAMS(dims,layer):
+ 	# GR_TEXT_HJUSTIFY_LEFT = _pcbnew.GR_TEXT_HJUSTIFY_LEFT
+ 	# GR_TEXT_HJUSTIFY_CENTER = _pcbnew.GR_TEXT_HJUSTIFY_CENTER
+ 	# GR_TEXT_HJUSTIFY_RIGHT = _pcbnew.GR_TEXT_HJUSTIFY_RIGHT
+ 	# GR_TEXT_VJUSTIFY_TOP = _pcbnew.GR_TEXT_VJUSTIFY_TOP
+ 	# GR_TEXT_VJUSTIFY_CENTER = _pcbnew.GR_TEXT_VJUSTIFY_CENTER
+ 	# GR_TEXT_VJUSTIFY_BOTTOM = _pcbnew.GR_TEXT_VJUSTIFY_BOTTOM
+    
+    # Text,0,0,Hello,this,is,interesting,and,very,very,very,long split newdrawing 
+    # copy
+    # copy
+    # pcbnew list GR_TEXT_HJUSTIFY_RIGHT attr delist
+    # SetHorizJustify callargs
+    # GetHorizJustify call
+    # The following works when the text object is a single item or a list of one or more
+    # currently, the "delist" is important
+    # copy copy pcbnew list GR_TEXT_HJUSTIFY_LEFT attr delist print SetHorizJustify callargs pop GetHorizJustify call print pop refresh
+    #
+    # : justifyl "Text [TEXTOBJ_LIST] Horizontal left justify text object" pcbnew list GR_TEXT_HJUSTIFY_LEFT attr delist SetHorizJustify callargs ;
+    # : justifyc "Text [TEXTOBJ_LIST] Horizontal center justify text object" pcbnew list GR_TEXT_HJUSTIFY_CENTER attr delist SetHorizJustify callargs ;
+    # : justifyr "Text [TEXTOBJ_LIST] Horizontal right justify text object" pcbnew list GR_TEXT_HJUSTIFY_RIGHT attr delist SetHorizJustify callargs ;
+    # : justifym "Text [TEXTOBJ_LIST] Vertical left justify text object" pcbnew list GR_TEXT_VJUSTIFY_CENTER attr delist SetVertJustify callargs ;
+    # : justifyt "Text [TEXTOBJ_LIST] Vertical top justify text object" pcbnew list GR_TEXT_VJUSTIFY_TOP attr delist SetVertJustify callargs ;
+    # : justifyb "Text [TEXTOBJ_LIST] Vertical bottom justify text object" pcbnew list GR_TEXT_VJUSTIFY_BOTTOM attr delist SetVertJustify callargs ;
+    #
+    # SetHorizJustify (self, aType) 
+    # SetVertJustify (self, aType)
+
+
+
+
     t,w,h = dims.split(',') if isinstance(dims,basestring) else dims \
     if hasattr(dims,'__iter__') else [dims]
 
@@ -2155,7 +2215,347 @@ def convert_to_points(input):
     # output( 'ctp3: ',input)
     # return input
 
+def streamgeom(inputiterable):
+    # Argtype
+    # p - point, converted by units
+    # P - point, converted by units, followed by all points
+    # n - number, converted by units
+    # N - number, not converted by units
+    # s - string
+    # S - string followed by all strings
 
+    argdict = {
+        'Line':'pp'
+        ,'CircleC':'pn'
+        ,'CircleR':'ppn'
+        ,'CircleO':'ppp'
+        ,'CircleP':'pp'
+        ,'ArcC':'ppN'
+#        ,'ArcR':'ppn'
+        ,'ArcO':'ppp'
+#        ,'ArcP':'ppp'
+        ,'Polygon':'p'
+        ,'Polyline':'p'
+        ,'Bezier':'pppp'
+        ,'Layer':'s'
+        ,'Text':'pS'
+        ,'Point':'p'
+        ,'Thickness':'n'
+        ,'Dot':'n'
+        ,'Via':'s'
+        ,'Corner':'n'
+        ,'PolylineRounded':'nP'
+    }
+    unitconversion = {
+        'mm':pcbnew.IU_PER_MM
+        ,'mil':pcbnew.IU_PER_MILS
+        ,'mils':pcbnew.IU_PER_MILS
+        ,'native':1.0
+        ,'nm':1.0
+    }
+# Line,mm,20,10,22,12 split newdrawing refresh
+# ArcC,mm,20,10,22,12,90 split newdrawing refresh
+# ArcM,mm,22,12,20,12.8,18,12 split newdrawing refresh
+# CircleP,mm,-10,-10,5 split newdrawing refresh
+# Polygon,mm,30,0,30,1,25,1 split newdrawing refresh
+# Bezier,mm,30,0,30,1,25,1 split newdrawing refresh
+
+    iterstack = [iter(inputiterable)]
+    outlist = []
+    currentarg = None # argtypes.next()
+    argpending = []
+
+    lengthmultiplier = 1.0
+    while iterstack:
+        try:
+            val = iterstack[-1].next()
+        except:
+            iterstack.pop()
+            continue
+        #output('processing {}'.format(val))
+        # output('VAL = {}'.format(val))
+        argtype = isinstance(val, collections.Hashable)
+        if argtype:
+            argtype = argdict.get(val,False)
+            currentmult = unitconversion.get(val,None)
+            if currentmult is not None:
+                # output('Found unit {}'.format(val))
+                lengthmultiplier = currentmult
+                continue
+            if argtype:
+                if outlist:
+                    yield outlist
+                    del outlist[:]
+                # output("Found {}".format(val))
+                argiter = itertools.cycle(argtype)
+                currentarg = argiter.next()
+
+                outlist.append(val)
+                continue
+        #currentarg = argiter.next()
+        if currentarg == 'P':
+            argiter = itertools.cycle('p')
+            currentarg = argiter.next()
+        if isinstance(val,pcbnew.wxPoint):
+            if currentarg != 'p':
+                raise TypeError('{} expected, got {}'.format(currentarg,type(val)))
+            outlist.append(val)
+            currentarg = argiter.next()
+            continue
+        if isiter(val):
+            iterstack.append(iter(val))
+            continue
+        if currentarg == 's':
+            outlist.append(str(val))
+            continue
+        if currentarg == 'S':
+            outlist.append(str(val))
+            argiter = itertools.cycle('s')
+            currentarg = argiter.next()
+            continue
+        if isinstance(val,basestring):
+                val = float(val)
+                
+        if isinstance(val,(float,int)):
+            if currentarg == 'N':
+                outlist.append(val)
+                currentarg = argiter.next()
+                continue
+            if currentarg == 'n':
+                outlist.append(val*lengthmultiplier)
+                currentarg = argiter.next()
+                continue
+            else:
+                argpending.append(val*lengthmultiplier)
+                if currentarg == "p" and len(argpending) == 2:
+                    outlist.append(pcbnew.wxPoint(*argpending))
+                    del argpending[:]
+                    currentarg = argiter.next()
+                    continue
+    if outlist:
+        yield outlist    
+
+def listtoargs(argtypestring, inlist):
+    # Convert an inlist into an outlist based on argtypes.
+    # argyptestring is a string of characters:
+    # p : point (can be a wxPoint, two numbers (either in a list/tuple or not)
+    # n : number, (float, int, or string)
+    # returns a linear list of arguments of type specified by argtypestring
+    # 
+    # useful to have {'Line':'pp', 'ArcA': 
+
+        # https://stackoverflow.com/a/1625013
+    # def grouper(n, iterable, fillvalue=None):
+        # "grouper(3, 'ABCDEFG', 'x') --> ABC DEF Gxx"
+        # args = [iter(iterable)] * n
+    # return itertools.zip_longest(*args, fillvalue=fillvalue)
+    
+    # def mygrouper(n, iterable):
+        # args = [iter(iterable)] * n
+        # return ([e for e in t if e != None] for t in itertools.zip_longest(*args))
+        
+    # zip(*(iter(the_list),) * group_size) # input is exact multiple, drops last if incomplete
+    # itertools.izip_longest(*(iter(range(10)),) * 3) # input is not exact multiple, fills with None
+    iterstack = [iter(inlist)]
+    outlist = []
+    argtypes = itertools.cycle(argtypestring)
+    currentarg = argtypes.next()
+    argpending = []
+    
+    while iterstack:
+        try:
+            val = iterstack[-1].next()
+        except:
+            iterstack.pop()
+            continue
+        if isinstance(val,pcbnew.wxPoint):
+            if currentarg != "p":
+                raise TypeError('wxPoint expected, got {}'.format(type(val)))
+            outlist.append(val)
+            currentarg = argtypes.next()
+            continue
+        if isiter(val):
+            iterstack.append(iter(val))
+            continue
+        if isinstance(val,basestring):
+            val = float(val)
+            
+        if isinstance(val,(float,int)):
+            if currentarg == "n":
+                outlist.append(val)
+                currentarg = argtypes.next()
+                continue
+            else:
+                argpending.append(val)
+                if currentarg == "p" and len(argpending) == 2:
+                    outlist.append(pcbnew.wxPoint(*argpending))
+                    del argpending[:]
+                    currentarg = argtypes.next()
+                    continue
+    return itertools.izip_longest(*(iter(outlist),) * len(argtypestring)) # input is not exact multiple, fills with None
+    # after return, raise exception if returnval[-1] is None
+    # return outlist
+    
+# https://github.com/openscopeproject/InteractiveHtmlBom/blob/d14cdc935bfcd5e903237219ccd7f4fb5cea6075/InteractiveHtmlBom/ecad/kicad.py#L108
+def parse_poly_set(polygon_set):
+    result = []
+    for polygon_index in range(polygon_set.OutlineCount()):
+        outline = polygon_set.Outline(polygon_index)
+        if not hasattr(outline, "PointCount"):
+            self.logger.warn("No PointCount method on outline object. "
+                             "Unpatched kicad version?")
+            return result
+        parsed_outline = ['Polygon']
+        for point_index in range(outline.PointCount()):
+            cp = outline.CPoint(point_index)
+            parsed_outline.append([cp.x,cp.y])
+        #parsed_outline.append('Polygon')
+        result.extend(parsed_outline)
+    return result
+
+def parse_zones(zone_containers):
+    if isinstance(zone_containers,pcbnew.ZONE_CONTAINER):
+        return parse_poly_set(zone_containers.GetFilledPolysList())
+    result = []
+    for zone in zone_containers:  # type: pcbnew.ZONE_CONTAINER, zc is not Iterable neither is zc.Iterate()
+        # ignoring GetMinThickness, GetNetname and GetLayer() # GetMinThickness,GetNetname,GetLayer
+        result.append(parse_poly_set(zone.GetFilledPolysList()))
+    return result
+
+def makeline(start,end):
+    output("line: start={} end={}".format(start,end))
+
+# Used for converting three points on circumference to circle or arc
+# first, matrix functions
+# from https://stackoverflow.com/a/39881366
+def transposeMatrix(m):
+    return map(list,zip(*m))
+
+def getMatrixMinor(m,i,j):
+    return [row[:j] + row[j+1:] for row in (m[:i]+m[i+1:])]
+
+def getMatrixDeternminant(m):
+    #base case for 2x2 matrix
+    if len(m) == 2:
+        return m[0][0]*m[1][1]-m[0][1]*m[1][0]
+
+    determinant = 0
+    for c in range(len(m)):
+        determinant += ((-1)**c)*m[0][c]*getMatrixDeternminant(getMatrixMinor(m,0,c))
+    return determinant
+
+def getMatrixInverse(m):
+    determinant = getMatrixDeternminant(m)
+    #special case for 2x2 matrix:
+    if len(m) == 2:
+        return [[m[1][1]/determinant, -1*m[0][1]/determinant],
+                [-1*m[1][0]/determinant, m[0][0]/determinant]]
+
+    #find matrix of cofactors
+    cofactors = []
+    for r in range(len(m)):
+        cofactorRow = []
+        for c in range(len(m)):
+            minor = getMatrixMinor(m,r,c)
+            cofactorRow.append(((-1)**(r+c)) * getMatrixDeternminant(minor))
+        cofactors.append(cofactorRow)
+    cofactors = transposeMatrix(cofactors)
+    for r in range(len(cofactors)):
+        for c in range(len(cofactors)):
+            cofactors[r][c] = cofactors[r][c]/determinant
+    return cofactors
+
+# from https://stackoverflow.com/a/45203136
+def getVectorMatrixMultiply(v, G):
+    result = []
+    for i in range(len(G[0])): #this loops through columns of the matrix
+        total = 0
+        for j in range(len(v)): #this loops through vector coordinates & rows of matrix
+            total += v[j] * G[j][i]
+        result.append(total)
+    return result
+def getMatrixMultiply(F, G):
+    result = []
+    for j in range(len(G)): #this loops through a column of F & rows of G
+        total = list(range(len(G[0])))
+        for i in range(len(G[0])): #this loops through columns of the matrix
+            total[i] += F[i][j] * G[j][i]
+        result.append(total)
+    return result
+
+# Calculate center (h,k) and radius (r) from three points.
+# from http://mathforum.org/library/drmath/view/55239.html
+         # |x1^2+y1^2  y1  1|        |x1  x1^2+y1^2  1|
+         # |x2^2+y2^2  y2  1|        |x2  x2^2+y2^2  1|
+         # |x3^2+y3^2  y3  1|        |x3  x3^2+y3^2  1|
+     # h = ------------------,   k = ------------------
+             # |x1  y1  1|               |x1  y1  1|
+           # 2*|x2  y2  1|             2*|x2  y2  1|
+             # |x3  y3  1|               |x3  y3  1|
+             
+# r = sqrt[(x1-h)^2+(y1-k)^2]
+def centerFromPoints(p1,p2,p3):
+  
+  x1,y1 = p1
+  x2,y2 = p2
+  x3,y3 = p3
+  
+  if (x1==x2 and y1==y2) or (x1==x3 and y1==y3) or (x2==x3 and y2==y3):
+    raise TypeError("All points must be different {}, {}, {}.".format(p1,p2,p3))
+    
+  a = x1 * (y2 - y3) - y1 * (x2 - x3) + x2 * y3 - x3 * y2
+  if abs(a) < 1e-10:
+    raise TypeError("Divisor is close to zero {}.".format(a))
+  
+  b = ((x1 * x1 + y1 * y1) * (y3 - y2) 
+        + (x2 * x2 + y2 * y2) * (y1 - y3)
+        + (x3 * x3 + y3 * y3) * (y2 - y1))
+ 
+  c = ((x1 * x1 + y1 * y1) * (x2 - x3) 
+        + (x2 * x2 + y2 * y2) * (x3 - x1) 
+        + (x3 * x3 + y3 * y3) * (x1 - x2))
+ 
+  x = -b / (2 * a)
+  y = -c / (2 * a)
+
+  return (x,y)
+
+sign = lambda a: (a>0) - (a<0)
+def centerFromPointsAndRadius(a,b,r):
+    # from http://mathforum.org/library/drmath/view/53027.html
+    x1,y1 = a
+    x2,y2 = b
+    dx = x2 - x1
+    dy = y1 - y2
+    q = math.sqrt(dx*dx + dy*dy)
+    x3 = (x1+x2)/2.0
+    y3 = (y1+y2)/2.0
+
+    x = x3 + sign(r)*math.sqrt(r*r-q*q/4)*dy/q
+    y = y3 + sign(r)*math.sqrt(r*r-q*q/4)*dx/q
+    return (x,y)
+
+def centerFromPoints_old(a,b,c):
+    denominator = [[2*a[0], 2*a[1], 2],[2*b[0],2*b[1],2],[2*c[0],2*c[1],2]]
+    denominator = getMatrixInverse(denominator)
+    output('Denom={}'.format(denominator))
+    h = [
+            [a[0]*a[0]+a[1]*a[1], a[1], 1],
+            [b[0]*b[0]+b[1]*b[1], b[1], 1],
+            [c[0]*c[0]+c[1]*c[1], c[1], 1]
+        ]
+    output('H before mult={}'.format(h))
+    h = getMatrixMultiply(h,denominator)
+    output('H after  mult={}'.format(h))
+    k = [
+            [a[0], a[0]*a[0]+a[1]*a[1], 1],
+            [b[0], b[0]*b[0]+b[1]*b[1], 1],
+            [c[0], c[0]*c[0]+c[1]*c[1], 1]
+        ]
+    k = getMatrixMultiply(k,denominator)
+    # r = sqrt[(a[0]-h)^2+(a[1]-k)^2]
+    return (h,k)#,r)
+    
 class commands:
     classinstance = None
     def NEWNET(self,netname):
@@ -2245,6 +2645,8 @@ class commands:
     
     def pairwise(self,iterable):
         "Conversion [LISTOFLISTS] [s] -> [[s0, s1], [s2, s3], [s4, s5], ...]"
+        #list(map(list, zip(a, b)))
+
         valuelist = []
         #print('iterable: ',iterable)
         for item in iterable[0]:
@@ -2752,6 +3154,630 @@ class commands:
         # netinfo = board.FindNet(netname)
         # return netinfo.GetNet()
 
+    def getpolypoints(self,*c):
+        """Geometry [SEGMENTLIST] Extract a list of polygon points from SEGMENTLIST. Returns a list of lists."""
+
+        dseglist = c[0][0]
+        print(dseglist)
+        # get the connected pairs. Use any one as a starting point.
+        # Between each successive pair of segments, find the intersection point assuming 
+        # the lines are infinite. Use the closest of the segments' points as the polygon point.
+        # This ensures that the grid is maintained.
+        ordered_and_split = order_segments(dseglist)
+        polypointslist = []
+
+        # order_segments() returns a list of lists. Each element of the first-level list is 
+        # a set of SEGMENTS that are connected together, and expect to be a single polygon.
+        for seglist in ordered_and_split:
+            polypoints = []    
+            a,b = itertools.tee(dseglist,2)
+            segiter = itertools.chain(a,itertools.islice(b,1))
+            points = []
+            # take first two segments
+            # find minimum distance 0s,1s; 0s,1e; 0e,1s; 0e,1e; 
+            points.extend(get_ds_ends(segiter.next()))
+            points.extend(get_ds_ends(segiter.next()))
+            dists = (
+                wxPointUtil.distance2(points[0],points[2]),
+                wxPointUtil.distance2(points[0],points[3]),
+                wxPointUtil.distance2(points[1],points[2]),
+                wxPointUtil.distance2(points[1],points[3]))        
+            minindex = min(enumerate(dists), key=operator.itemgetter(1))[0] 
+            # make sure the closest points are indexes 1 and 2
+            # index 0 is connected in the other direction
+            # index 3 is connected to the next point we will process
+            if minindex < 2:
+               points[0],points[1] = points[1],points[0] 
+               
+            if minindex % 2:
+               points[2],points[3] = points[3],points[2] 
+            
+            polypoints.append(points[1])
+            points = points[-1:] # this will be a one-element list
+            
+            for nextseg in segiter:
+                points.extend(get_ds_ends(nextseg))
+                if wxPointUtil.distance2(points[0],points[2]) < wxPointUtil.distance2(points[0],points[1]):
+                    points[1],points[2] = points[2],points[1]        
+                polypoints.append(points[1])
+                points = points[-1:]
+            polypointslist.append(polypoints)
+            
+        return polypointslist
+
+    def getgeom(self,*c):
+        """Geometry [OBJECTLIST] Extract the OBJECTLIST geometries into list of strings, suitable for newdrawing, newtrack, or newzone. Some information is lost, such as thickness, corner smoothing, and layer. newdrawing,newtrack,newzone"""
+        result = []
+        # output('c={}'.format(c))
+        # output('c[0]={}'.format(c[0]))
+        for segment in c[0][0]:
+            if isinstance(segment,pcbnew.DRAWSEGMENT):
+                segmentshapenum = segment.GetShape()
+                if segmentshapenum == pcbnew.S_SEGMENT:
+                    outtype = 'Line'
+                    result.append([outtype,segment.GetStart(),segment.GetEnd()])
+                elif segmentshapenum == pcbnew.S_ARC:
+                    outtype = 'ArcC'
+                    result.append([outtype,segment.GetArcStart(),segment.GetCenter(),segment.GetAngle()/10.0])
+                elif segmentshapenum == pcbnew.S_CIRCLE:
+                    outtype = 'CircleP'
+                    result.append([outtype,segment.GetCenter(),segment.GetStart()])
+                elif segmentshapenum == pcbnew.S_POLYGON:
+                    #outtype = 'Polygon'
+                    result.append(parse_poly_set(segment.GetPolyShape()))
+                elif segmentshapenum == pcbnew.S_CURVE:
+                    outtype = 'Bezier'
+                    result.append([outtype,
+                    segment.GetStart(),
+                    segment.GetBezControl1(),
+                    segment.GetBezControl2(),
+                    segment.GetEnd()])
+
+                elif segmentshapenum == pcbnew.S_RECT:
+                    outtype = 'Rect'
+                    result.append([outtype,'Unsupported'])
+            elif isinstance(segment,pcbnew.ZONE_CONTAINER):
+                    # output('zone')
+                    #outtype = 'Zone'
+                    result.append(parse_poly_set(segment.GetFilledPolysList()))
+            elif isinstance(segment,pcbnew.ZONE_CONTAINERS):
+                    result.append([parse_poly_set(segment.GetFilledPolysList()) for zone in zone_containers])
+                    #result.extend(itertools.imap([parse_poly_set(segment.GetFilledPolysList()) for zone in zone_containers])
+            elif isinstance(segment,pcbnew.VIA):
+                result.append([outtype,'VIA Unsupported'])
+            # elif isinstance(segment,pcbnew.ARC):
+                # outtype = 'ArcM'
+                # result.append([outtype,segment.GetStart(),segment.GetEnd(),segment.GetMid()])
+            elif isinstance(segment,pcbnew.TRACK):
+                outtype = 'Line'
+                result.append([outtype,segment.GetStart(),segment.GetEnd()])
+        return result
+
+    def newdrawing(self,*c):
+        """Draw [OBJECTS] Define new drawsegment using drawparameters."""
+    
+        c=c[0]
+        layerID = getLayerID(_user_stacks['drawparams']['l'])
+        thickness = max(1,int(_user_stacks['drawparams']['t']))
+        board = getBoard()
+        results = []
+        previousPoint = None
+        previousGeom = None
+        previousSegment = None
+        previousCornerRadius = None
+        currentCornerRadius = None
+        for geom in streamgeom(c):
+            # output("GEOM = {}".format(str(geom)))
+            if geom[0] == 'Line':
+                for argset in itertools.izip_longest(*(iter(geom[1:]),) * 2):
+                    ds=pcbnew.DRAWSEGMENT(board)
+                    board.Add(ds)
+                    results.append(ds)
+                    previousSegment = ds
+
+                    ds.SetLayer(layerID)                
+                    ds.SetShape(pcbnew.S_SEGMENT)
+                    
+                    ds.SetWidth(thickness)
+
+                    ds.SetStart(argset[0])
+                    ds.SetEnd(argset[1])
+                    previousPoint = argset[1]
+                previousGeom = geom[0]
+            elif geom[0].startswith('Arc') and len(geom[0]) == 4:
+                previousSegment = None
+
+            # Autodesk: To create an arc, you can specify combinations of center, endpoint, start point, radius, angle, chord length, and direction values
+            # Arc: A chord, a central angle or an inscribed angle may divide a circle into two arcs. The smaller of the two arcs is called the minor arc. The larger of the two arcs is called the major arc.
+            
+                if geom[0][-1] == 'C': # center start angle
+                    for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+                        ds=pcbnew.DRAWSEGMENT(board)
+                        board.Add(ds)
+                        results.append(ds)
+                        ds.SetLayer(layerID)                
+                        ds.SetShape(pcbnew.S_ARC)
+
+                        ds.SetWidth(thickness)
+                        
+                        # output('Created ArcC with C={}; S={}; A={}'.format(*argset))
+                        ds.SetCenter(argset[0])
+                        ds.SetArcStart(argset[1])
+                        ds.SetAngle(int(argset[2]*10))
+                elif geom[0][-1] == 'O': # start, mid, end
+                    for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+                        (start, mid, end) = argset
+                        # (center, start, angle) = argset
+                        ds=pcbnew.DRAWSEGMENT(board)
+                        board.Add(ds)
+                        results.append(ds)
+                        ds.SetLayer(layerID)                
+                        ds.SetShape(pcbnew.S_ARC)
+
+                        ds.SetWidth(thickness)
+                        
+                        # 'O' to 'C'
+                        center = centerFromPoints(*argset)
+                        # radius = wxpointutil.distance(argset[0],center)
+                        # vector angle
+                        # output('Start={}; Center={};'.format(start,center))
+                        startvector = (start[0] - center[0],start[1] - center[1])
+                        startangledeg = math.atan2(float(startvector[1]),startvector[0])*180/math.pi
+
+                        endvector = (end[0] - center[0],end[1] - center[1])
+                        endangledeg = math.atan2(float(endvector[1]),endvector[0])*180/math.pi
+                        
+                        angle = endangledeg - startangledeg
+                        
+                        midvector = (mid[0] - center[0],mid[1] - center[1])
+                        midangledeg = math.atan2(float(midvector[1]),midvector[0])*180/math.pi
+                        
+                        output("sme (angle) = {} > {} > {}".format(int(startangledeg),int(midangledeg),int(endangledeg)))
+
+                        # start mid end newmid
+                        # m0=m-s ; e0=e-s
+                        # a0=a-s
+                        # if not s<m<e:
+                        # if not (s<m<a or s>m>a):
+                        #     if a<=0:
+                        #         a += 360
+                        #     else:
+                        #         a -= 360
+
+                        # 1,0 1,1 0,1 -1,1 -1,0 -1,-1 0,-1 1,-1
+                        
+                        s=startangledeg % 360
+                        m=midangledeg % 360
+                        e=endangledeg % 360
+                        
+                        if s<m<e or m<e<s or e<s<m:
+                            angle = angle%360
+                        elif s<e<m or m<s<e or e<m<s:
+                            angle = angle%360-360
+
+                        #output('SME={} --> CSA={}'.format(str((start,mid,end)),str((center,start,angle))))
+                        ds.SetArcStart(pcbnew.wxPoint(*start))
+                        ds.SetCenter(pcbnew.wxPoint(*center))
+                        ds.SetAngle(int(angle*10))
+                        previousPoint = end
+                elif geom[0][-1] == 'P': # center start end
+   #?
+                    for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+                        ds=pcbnew.DRAWSEGMENT(board)
+                        board.Add(ds)
+                        results.append(ds)
+                        ds.SetLayer(layerID)                
+                        ds.SetShape(pcbnew.S_ARC)
+
+                        ds.SetWidth(thickness)
+
+                        # output('Unsupported ArcP with C={}; S={}; E={}'.format(*argset))
+                        center,start,end = argset
+                        
+                        startvector = (start[0] - center[0],start[1] - center[1])
+                        startangledeg = math.atan2(float(startvector[1]),startvector[0])*180/math.pi
+                        
+                        endvector = (end[0] - center[0],end[1] - center[1])
+                        endangledeg = math.atan2(float(endvector[1]),endvector[0])*180/math.pi
+
+                        angle = endangledeg - startangledeg
+
+                        ds.SetCenter(center)
+                        ds.SetArcStart(start)
+                        ds.SetAngle(int(angle*10))
+                        previousPoint = end
+                        
+                elif geom[0][-1] == 'R': # start end radius
+   #?
+                    for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+                        start,end,radius = argset
+                        ds=pcbnew.DRAWSEGMENT(board)
+                        board.Add(ds)
+                        results.append(ds)
+                        ds.SetLayer(layerID)                
+                        ds.SetShape(pcbnew.S_ARC)
+
+                        ds.SetWidth(thickness)
+                        
+                        center = centerFromPointsAndRadius(start,end,radius)
+                        startvector = (start[0] - center[0],start[1] - center[1])
+                        startangledeg = math.atan2(float(startvector[1]),startvector[0])*180/math.pi
+                        
+                        endvector = (end[0] - center[0],end[1] - center[1])
+                        endangledeg = math.atan2(float(endvector[1]),endvector[0])*180/math.pi
+
+                        angle = endangledeg - startangledeg
+
+                        output('C={}; S={}; A={}'.format(center,start,angle))
+                        ds.SetCenter(pcbnew.wxPoint(*center))
+                        ds.SetArcStart(start)
+                        ds.SetAngle(int(angle*10))
+                previousGeom = geom[0]
+
+            elif geom[0].startswith('Circle') and len(geom[0]) == 7:
+                previousSegment = None
+                if geom[0][-1] == 'C':
+                    for argset in itertools.izip_longest(*(iter(geom[1:]),) * 2):
+                        center,radius = argset
+                        end = pcbnew.wxPoint(center[0]+radius,center[1])
+
+                        ds=pcbnew.DRAWSEGMENT(board)
+                        board.Add(ds)
+                        results.append(ds)
+                        ds.SetLayer(layerID)                
+                        ds.SetShape(pcbnew.S_CIRCLE)
+
+                        ds.SetWidth(thickness)
+                        #output('C={}; S={}'.format(center,start))
+                        ds.SetCenter(center)
+                        ds.SetEnd(end)
+                    
+                elif geom[0][-1] == 'P':
+
+                    for argset in itertools.izip_longest(*(iter(geom[1:]),) * 2):
+                        center,end = argset
+                        ds=pcbnew.DRAWSEGMENT(board)
+                        board.Add(ds)
+                        results.append(ds)
+                        ds.SetLayer(layerID)                
+                        ds.SetShape(pcbnew.S_CIRCLE)
+
+                        ds.SetWidth(thickness)
+                        #output('C={}; S={}'.format(center,start))
+                        ds.SetCenter(center)
+                        ds.SetEnd(end)
+                elif geom[0][-1] == 'R':
+                    for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+                        p1,p2,radius = argset
+                        ds=pcbnew.DRAWSEGMENT(board)
+                        board.Add(ds)
+                        results.append(ds)
+                        ds.SetLayer(layerID)                
+                        ds.SetShape(pcbnew.S_CIRCLE)
+
+                        ds.SetWidth(thickness)
+                        
+                        center = centerFromPointsAndRadius(p1,p2,radius)
+                        output('C={}; S={}'.format(center,p1))
+                        ds.SetCenter(pcbnew.wxPoint(*center))
+                        ds.SetEnd(p1)
+                        
+                elif geom[0][-1] == 'O':
+                    for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+                        end,p2,p3 = argset
+                        ds=pcbnew.DRAWSEGMENT(board)
+                        board.Add(ds)
+                        results.append(ds)
+                        ds.SetLayer(layerID)                
+                        ds.SetShape(pcbnew.S_CIRCLE)
+
+                        ds.SetWidth(thickness)
+                        # output("three points: {} {} {}".format(*argset))
+                        
+                        center = centerFromPoints(*argset)
+                        center = pcbnew.wxPoint(*center)
+                        # output("center ({})={}".format(type(center),center))
+                        # output("end ({})={}".format(type(end),end))
+                        ds.SetCenter(center)
+                        ds.SetEnd(end)
+                previousGeom = geom[0]
+
+            elif geom[0] == 'Polygon':
+                previousSegment = None
+                ds=pcbnew.DRAWSEGMENT(board)
+                board.Add(ds)
+                results.append(ds)
+                ds.SetLayer(layerID)                
+                ds.SetShape(pcbnew.S_POLYGON)
+
+                ds.SetWidth(thickness)
+                ds.SetPolyPoints(geom[1:])
+                previousPoint = geom[-1]
+                previousGeom = geom[0]
+            elif geom[0] == 'PolylineRounded':
+            # PolylineRounded,mm,2,20,20,25,25,20,25,30,30,35,35,40,35 split newdrawing refresh
+            # PolylineRounded,mm,2,20,20,20,25,20,20,25,20,20 split newdrawing refresh
+                firstsegment = None
+                firstpoint = None
+                cornerRadius = geom[1]
+                output('CornerR={}'.format(cornerRadius))
+                startpoints = itertools.islice(geom,2,len(geom))
+                endpoints = itertools.islice(geom,3,len(geom))
+                for start,end in itertools.izip(startpoints,endpoints):
+                    output("s={} e={}".format(start,end))
+                    ds=pcbnew.DRAWSEGMENT(board)
+                    board.Add(ds)
+                    ds.SetLayer(layerID)                
+                    ds.SetShape(pcbnew.S_SEGMENT)
+                    
+                    ds.SetWidth(thickness)
+                    ds.SetStart(start)
+                    ds.SetEnd(end)
+                    if firstsegment is None:
+                        output('setting firstsegment')
+                        firstsegment = ds
+                        firstpoint = start
+                    else:
+                        output('drawing arc near {}: {}'.format(start,str((results[-1].GetStart(),results[-1].GetEnd(),ds.GetStart(),ds.GetEnd()))))
+                        draw_arc_to_lines(cornerRadius,results[-1],ds)
+                    results.append(ds)
+                lastsegment = results[-1]
+                if firstpoint[0] == end[0] and firstpoint[1] == end[1]:
+                    output('drawing arc at end near {}'.format(firstpoint))
+                    draw_arc_to_lines(cornerRadius,firstsegment,lastsegment)
+                
+            
+            elif geom[0] == 'Polyline':
+                if previousGeom in ('Dot','Via','Corner'):
+                    output('Continuing polyline from {}'.format(previousPoint))
+                 
+                 
+                
+                    # output("previous Dot")
+                    previousGeom = geom[0]
+                    geom[0] = previousPoint
+                    startpoints = iter(geom)
+                    endpoints = iter(geom[1:])
+                    # endpoints = itertools.islice(geom,1,len(geom)-1)
+                else:
+                    # output("previous not Dot")
+                    previousGeom = geom[0]
+                    startpoints = itertools.islice(geom,1,len(geom))
+                    endpoints = itertools.islice(geom,2,len(geom))
+                for start,end in itertools.izip(startpoints,endpoints):
+                    # output("s={} e={}".format(start,end))
+                    ds=pcbnew.DRAWSEGMENT(board)
+                    board.Add(ds)
+                    results.append(ds)
+                    ds.SetLayer(layerID)                
+                    ds.SetShape(pcbnew.S_SEGMENT)
+                    
+                    ds.SetWidth(thickness)
+# Polyline,mm,20,20,25,25,20,25,Dot,mm,3,Polyline,mm,30,30,35,35 split newdrawing refresh
+# Polyline,mm,20,20,25,25,20,25,Polyline,mm,30,30,35,35 split newdrawing refresh
+# Polyline,mm,20,20,25,25,20,25,Via,mm,2,1,Polyline,mm,30,30,35,35 split newdrawing refresh
+# Polyline,mm,20,20,25,25,20,25,Corner,mm,1,Polyline,mm,30,30,35,35,Via,mm,3,2,F.Cu,Polyline,mm,40,35 split newdrawing refresh
+                    ds.SetStart(start)
+                    ds.SetEnd(end)
+                    if previousSegment and currentCornerRadius:
+                    # make a corner between previousCornerSegment and ds.
+                        output("Corner radius {} ".format(currentCornerRadius))
+                        draw_arc_to_lines(currentCornerRadius,ds,previousSegment)
+                        previousSegment = None
+                        currentCornerRadius = None
+                    output("s={} e={}".format(start,end))
+                    previousSegment = ds
+                    previousPoint = end
+# a=[0,1,2,3,4,5,6,7,8]
+# s=itertools.islice(a,1,len(a))
+
+
+            elif geom[0].startswith('Bezier'):
+                for argset in itertools.izip_longest(*(iter(geom[1:]),) * 4):
+                    ds=pcbnew.DRAWSEGMENT(board)
+                    board.Add(ds)
+                    results.append(ds)
+                    ds.SetLayer(layerID)                
+                    ds.SetShape(pcbnew.S_CURVE)
+
+                    ds.SetWidth(thickness)
+                    
+                    
+                    ds.SetStart(argset[0])
+                    ds.SetBezControl1(argset[1])
+                    ds.SetBezControl2(argset[2])
+                    ds.SetEnd(argset[3])
+                    previousPoint = argset[3]
+                    previousSegment = None # change this to ds when Corner after Bezier is supported
+                previousGeom = geom[0]
+            elif geom[0] == 'Via': # arguments are [Type] Width DrillValue [ToLayer] 
+                previousSegment = None
+                previousGeom = geom[0]
+                ds=pcbnew.VIA(board)
+                board.Add(ds)
+                results.append(ds)
+                ds.SetPosition(previousPoint)
+                
+                viatypes = {
+                    'Blind':pcbnew.VIA_BLIND_BURIED,
+                    'Buried':pcbnew.VIA_BLIND_BURIED,
+                    'Through':pcbnew.VIA_THROUGH,
+                    'Micro':pcbnew.VIA_MICROVIA
+                    # pcbnew.VIA_NOT_DEFINED 
+                }
+                viatype = viatypes.get(geom[1],None)
+                if viatype:
+                    typeindex = 1
+                else:
+                    typeindex = 0
+                    viatype = viatypes['Through']
+                ds.SetViaType(viatype)
+                w = int(pcbnew.IU_PER_MM*float(geom[typeindex+1]))
+                d = int(pcbnew.IU_PER_MM*float(geom[typeindex+2]))
+                ds.SetWidth(max(w,d))
+                ds.SetDrill(min(w,d))
+                
+                fromLayerID = getLayerID(_user_stacks['drawparams']['l'])
+                #output('geomlen={}; layerindex={}'.format(len(geom),typeindex+3))
+                if len(geom) > (typeindex+3):
+                    tolay = geom[typeindex+3]
+                    toLayerID = getLayerID(tolay)
+                    PARAM(tolay,'l')
+                    layerID = getLayerID(_user_stacks['drawparams']['l'])
+                else:
+                    toLayerID = fromLayerID
+                ds.SetLayerPair(fromLayerID,toLayerID)
+                
+                # SetWidth(int)?
+                #SetDrillDefault()
+            elif geom[0] == 'Dot': # argument is Diameter
+                previousSegment = None
+                previousGeom = geom[0]
+                radius = int(geom[1])
+                centerpoint = previousPoint
+                
+                # for argset in itertools.izip_longest(*(iter(geom[2:]),) * 1):
+                    # centerpoint = argset
+                ds=pcbnew.DRAWSEGMENT(board)
+                board.Add(ds)
+                results.append(ds)
+                ds.SetLayer(layerID)                
+                ds.SetShape(pcbnew.S_CIRCLE)
+                
+
+                ds.SetWidth(radius)
+                #output('C={}; S={}'.format(center,start))
+                ds.SetCenter(centerpoint)
+                ds.SetEnd(centerpoint)#pcbnew.wxPoint(centerpoint[0]+1,centerpoint[1]))
+
+            elif geom[0] == 'Layer':
+                PARAM(geom[-1],'l')
+                layerID = getLayerID(_user_stacks['drawparams']['l'])
+                
+            elif geom[0] == 'Thickness':
+                PARAM(geom[-1],'t')
+                thickness = max(1,int(_user_stacks['drawparams']['t']))
+
+            elif geom[0] == 'Text':
+                # text,pos,size
+                text = ' '.join(geom[2:])
+                if '\\' in text:
+                    text = decodestring(text)
+                text = draw_text(text,geom[1],[_user_stacks['drawparams']['w'],_user_stacks['drawparams']['h']],layer=_user_stacks['drawparams']['l'],thickness=_user_stacks['drawparams']['t'])
+                results.append(text)
+            elif geom[0] == 'Point':
+                previousSegment = None
+                previousGeom = geom[0]
+                previousPoint = geom[-1]
+            elif geom[0] == 'Corner':
+                previousGeom = geom[0]
+                if len(geom) >= 2:
+                    currentCornerRadius = geom[1]
+                else:
+                    currentCornerRadius = previousCornerRadius
+        return results
+
+    def newtrack(self,*c):
+        """Draw [OBJECTS] Define new tracks using drawparameters."""
+        results = []
+        c=c[0]
+        layerID = getLayerID(_user_stacks['drawparams']['l'])
+        thickness = max(1,int(_user_stacks['drawparams']['t']))
+        for geom in streamgeom(c):
+            if geom[0] == 'Line':
+                for argset in itertools.izip_longest(*(iter(geom[1:]),) * 2):
+                    # makeline(*argset)
+                    ds = draw_segmentwx(*argset,layer=_user_stacks['drawparams']['l'],thickness=_user_stacks['drawparams']['t'])
+                    results.append(ds)
+
+            elif geom[0].startswith('Arc') and len(geom[0] == 4):
+                if geom[-1] == 'M':
+                    for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+                        board = getBoard()
+                        ds=pcbnew.ARC(board)
+                        board.Add(ds)
+                        results.append(ds)
+                        ds.SetLayer(layerID)
+                        ds.SetWidth(thickness)
+                        
+                        ds.SetStart(argset[0])
+                        ds.SetMid(argset[1])
+                        ds.SetEnd(argset[2])
+                elif geom[-1] == 'C': # center start angle
+                    for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+                        (center, start, angle) = argset
+                        board = getBoard()
+                        ds=pcbnew.ARC(board)
+                        board.Add(ds)
+                        results.append(ds)
+                        ds.SetLayer(layerID)
+                        ds.SetWidth(thickness)
+                        
+                        # Angle from center to start
+                        startvector = start - center
+                        startangledeg = math.atan2(float(startvector[1]),startvector[0])*180/math.pi
+                        endangledeg = startangledeg + angle
+                        endanglerad = endangledeg*math.pi/180
+                        r=wxpointutil.distance(center,start)
+                        endx=center[0]+r*math.cos(endanglerad)
+                        endy=center[1]+r*math.sin(endanglerad)
+                        # Add "angle" then find midangle by dividing by 2
+                        midanglerad = ((startangledeg*math.pi/180)+endanglerad)/2
+                        midx=center[0]+r*math.cos(midanglerad)
+                        midy=center[1]+r*math.sin(midanglerad)
+                        output('CSA={} --> SME={}'.format(str((center,start,angle)),str((start[0],start[1],midx,midy,endx,endy))))
+                        # ds.SetStart(argset[0])
+                        # ds.SetMid(argset[1])
+                        # ds.SetEnd(argset[2])
+            elif geom[0].startswith('Circle') and len(geom[0] == 7):
+                pass
+            elif geom[0].startswith('Polygon'):
+                pass
+            elif geom[0].startswith('Polyline'):
+                pass
+            elif geom[0].startswith('Bezier'):
+                pass
+            elif geom[0].startswith('Via'): # arguments are [Type] DrillValue ToLayer 
+            # VIATYPE_BLIND_BURIED
+            # VIATYPE_MICROVIA
+            # VIATYPE_NOT_DEFINED
+            # VIATYPE_THROUGH
+                pass
+        return results
+            
+
+            #output(': {}'.format(str(geom)))
+       
+    # def newsegment(self,*c):
+        # """Draw [TYPE POINTS] Define a new segment using drawparameters, TYPE (string), and POINTS (list of floats)."""
+        # c=c[0]
+        # output("newsegment: {}".format(c))
+        # _newsegment(*c)
+        # # It's plausible that entries can come in any of the following.
+        # # Single Line
+        # # string,[number,number,number,number]
+        # # string,[(number,number),(number,number)]
+        # # string,[point,point]
+        # # string,[point,(number,number)]
+        # # string,[(number,number),point]
+        # #?string,[(number,number),number,number]
+        # #?string,[number,number,(number,number)]
+        # #?string,[point,number,number]
+        # #?string,[number,number,point]
+
+        # for inlist in [
+            # [1,2,3,4,5,6,7,8]
+            # ,[[1,2],[3,4],[5,6],[7,8]]
+            # ,[(1,2),(3,4),(5,6),(7,8)]
+            # ,[pcbnew.wxpoint(1,2),pcbnew.wxpoint(3,4),pcbnew.wxpoint(4,6),pcbnew.wxpoint(7,8)]
+            # ,[pcbnew.wxpoint(1,2),3,4,pcbnew.wxpoint(4,6),(7,8)]
+            # ,[list("12345678")]
+            # ]:
+            # print(listtoargs("pp",inlist))
+        # # first element is point,number, or iterable (2-element list or tuple)
+        
+        # # Possible algorithm for Line
+        # listtoargs("pp",c[1])
 
 ################## END OF COMMANDS CLASS ###########################
             
@@ -3079,17 +4105,17 @@ def HELPCAT(category):
     for command in commands:
         print_command_detail(command)
             
-def floatnoerror(value):
+def safe_float(value):
     try:
         return float(value)
     except:
         return value
-def roundnoerror(value,n=0):
+def safe_round(value,n=0):
     try:
         return round(float(value),n) # convert to float to catch the case where input is string float value
     except:
         return value
-def intnoerror(value):
+def safe_int(value):
     try:
         return int(float(value)) # convert to float to catch the case where input is string float value
     except:
@@ -3162,6 +4188,27 @@ def HELP(textlist,category=None,exact=False):
 
 def isiter(object):
     return hasattr(object,'__iter__') and not isinstance(object,basestring)
+
+def safe_multiply(a,b):
+    try:
+        return float(a)*float(b)
+    except:
+        return a
+def safe_add(a,b):
+    try:
+        return float(a)+float(b)
+    except:
+        return a
+def safe_subtract(a,b):
+    try:
+        return float(a)-float(b)
+    except:
+        return a
+def safe_divide(a,b):
+    try:
+        return float(a)/float(b)
+    except:
+        return a
     
 # Add more command definitions
 _dictionary['command'].update({
@@ -3379,19 +4426,19 @@ _dictionary['command'].update({
     # # Outline the pads. Might be a problem with "bounding box" being orthogonal when pad is rotated.
     # r('clear pads copy GetBoundingBox call corners swap copy GetCenter call swap GetOrientationDegrees call rotatepoints drawsegments')
     '+.': Command(2,lambda c:
-            [float(a)+float(b) for a,b in zip(c[0], cycle(c[1]))],'Numeric',
+            [safe_add(a,b) for a,b in zip(c[0], cycle(c[1]))],'Numeric',
         '[LIST1 LIST2] Return the the floating point LIST1 + LIST2 member by member.'),
     '*.': Command(2,lambda c:
-            [float(a)*float(b) for a,b in zip(c[0], cycle(c[1]))],'Numeric',
+            [safe_multiply(a,b) for a,b in zip(c[0], cycle(c[1]))],'Numeric',
         '[LIST1 LIST2] Return the the floating point LIST1 * LIST2 member by member.'),
-
+        
     '+': Command(2,lambda c:
-            float(c[0])+float(c[1]),'Numeric',
+            safe_add(c[0],c[1]),'Numeric',
         '[OPERAND1 OPERAND2] Return the the floating point OPERAND1 + OPERAND2.'),
-        # floatnoerror(c[0]) if str and not ','
+        # safe_float(c[0]) if str and not ','
     # 'a': Command(2,
-                       # lambda c: floatnoerror(c[0]) if isinstance(c[0],basestring) \
-                       # and c[0].find(',') == -1 else map(lambda x: floatnoerror(x),
+                       # lambda c: safe_float(c[0]) if isinstance(c[0],basestring) \
+                       # and c[0].find(',') == -1 else map(lambda x: safe_float(x),
                        # c[0].split(',')
                        # if isinstance(c[0],basestring) else c[0]
                        # if hasattr(c[0],'__iter__') else [c[0]]),
@@ -3399,21 +4446,21 @@ _dictionary['command'].update({
         # '[OBJECT] Return OBJECT as a floating point value or list. OBJECT can '
         # 'be a string, a comma separated list of values, a list of strings, or '
         # 'list of numbers.', ),
-    '-': Command(2,lambda c: float(c[0])-float(c[1]),'Numeric',
+    '-': Command(2,lambda c: safe_subtract(c[0],c[1]),'Numeric',
         '[OPERAND1 OPERAND2] Return the the floating point OPERAND1 - OPERAND2.'),
-    '*': Command(2,lambda c: float(c[0])*float(c[1]),'Numeric',
+    '*': Command(2,lambda c: safe_multiply(c[0],c[1]),'Numeric',
         '[OPERAND1 OPERAND2] Return the the floating point OPERAND1 * OPERAND2.'),
-    '/': Command(2,lambda c: float(c[0])/float(c[1]),'Numeric',
+    '/': Command(2,lambda c: safe_divide(c[0],c[1]),'Numeric',
         '[OPERAND1 OPERAND2] Return the the floating point OPERAND1 / OPERAND2.'),
     'sum': Command(1, lambda c: sum(*c), 'Numeric', 
         '[LIST] Return the sum of all members in LIST.'), 
     
     # 'sum': Command(1,
-       # lambda c: floatnoerror(c[0]) if isinstance(c[0],basestring) \
-       # and c[0].find(',') == -1 else sum(map(lambda x: floatnoerror(x),
+       # lambda c: safe_float(c[0]) if isinstance(c[0],basestring) \
+       # and c[0].find(',') == -1 else sum(map(lambda x: safe_float(x),
        # c[0].split(','))
        # if isinstance(c[0],basestring) else sum(c[0])) 
-       # if hasattr(c[0],'__iter__') else floatnoerror(c[0]),
+       # if hasattr(c[0],'__iter__') else safe_float(c[0]),
 
     # 'Numeric',
         # '[LIST] Return the sum of all members in LIST.'),
@@ -3438,8 +4485,8 @@ _dictionary['command'].update({
                        # if isinstance(c[0],basestring) else c[0]
                        # if hasattr(c[0],'__iter__') else [c[0]]),
     'float': Command(1,
-                       lambda c: floatnoerror(c[0]) if isinstance(c[0],basestring) \
-                       and c[0].find(',') == -1 else map(lambda x: floatnoerror(x),
+                       lambda c: safe_float(c[0]) if isinstance(c[0],basestring) \
+                       and c[0].find(',') == -1 else map(lambda x: safe_float(x),
                        c[0].split(',')
                        if isinstance(c[0],basestring) else c[0]
                        if hasattr(c[0],'__iter__') else [c[0]]),
@@ -3448,8 +4495,8 @@ _dictionary['command'].update({
         'be a string, a comma separated list of values, a list of strings, or '
         'list of numbers.', ),
     'roundint': Command(1,
-                       lambda c: roundnoerror(c[0]) if isinstance(c[0],basestring) \
-                       and c[0].find(',') == -1 else map(lambda x: roundnoerror(x),
+                       lambda c: safe_round(c[0]) if isinstance(c[0],basestring) \
+                       and c[0].find(',') == -1 else map(lambda x: safe_round(x),
                        c[0].split(',')
                        if isinstance(c[0],basestring) else c[0]
                        if hasattr(c[0],'__iter__') else [c[0]]),
@@ -3458,8 +4505,8 @@ _dictionary['command'].update({
         'be a string, a comma separated list of values, a list of strings, or '
         'list of numbers.', ),
     'roundn': Command(2,
-                       lambda c: roundnoerror(c[0],n=int(c[1])) if isinstance(c[0],basestring) \
-                       and c[0].find(',') == -1 else map(lambda x: roundnoerror(x,n=int(c[1])),
+                       lambda c: safe_round(c[0],n=int(c[1])) if isinstance(c[0],basestring) \
+                       and c[0].find(',') == -1 else map(lambda x: safe_round(x,n=int(c[1])),
                        c[0].split(',')
                        if isinstance(c[0],basestring) else c[0]
                        if hasattr(c[0],'__iter__') else [c[0]]),
@@ -3480,8 +4527,8 @@ _dictionary['command'].update({
         'list of values.', ),
     'int': Command(1,
     # if basestring and has ','
-                       lambda c: intnoerror(c[0]) if isinstance(c[0],basestring) \
-                       and c[0].find(',') == -1 else map(lambda x: intnoerror(x),
+                       lambda c: safe_int(c[0]) if isinstance(c[0],basestring) \
+                       and c[0].find(',') == -1 else map(lambda x: safe_int(x),
                        c[0].split(',')
                        if isinstance(c[0],basestring) else c[0]
                        if hasattr(c[0],'__iter__') else [c[0]]),
@@ -3761,11 +4808,95 @@ if Counter(pshapesactual) != Counter(pshapes):
     except:
         pass
 
+def _newsegment(type, points):
+    output("_newsegment: {} {}".format(type,points))
+    
+    board = getBoard()
+    ds=pcbnew.DRAWSEGMENT(board)
+    board.Add(ds)
+    layer = _user_stacks['drawparams']['l']
 
+    ds.SetLayer(getLayerID(layer)) # TODO: Set layer number from string
+    ds.SetWidth(max(1,int(_user_stacks['drawparams']['t'])))
+    
+    # ds=pcbnew.DRAWSEGMENT()
+    # types = {}
+    # for shapenum in range(pcbnew.S_LAST):
+        # ds.SetShape(shapenum)
+        # types[ds.GetShapeStr()] = shapenum
+        
+    types = {
+            'Arc':pcbnew.S_ARC,
+            'Circle':pcbnew.S_CIRCLE,
+            #'Bezier':pcbnew.S_CURVE,
+            'Polygon':pcbnew.S_POLYGON,
+            #'Rect':pcbnew.S_RECT,
+            'Line':pcbnew.S_SEGMENT
+        }
+    typenum = types.get(type,-1)
+    if type == -1:
+        raise TypeError('Type must be one of {}'.format(', '.join(types.keys())))
+    
+    # GetShapeStr,GetPosition,GetCenter,GetArcStart,GetAngle,
+    # what is the difference between Center and Position?
+    # GetType always returns 0
+    
+    # newline
+    # newpolygon 
+    # newarc, newarca, newarcp, newarcr, 
+    # newcircle, newcirclep, newcircler, newcirclec
+    
+    # line, polygon, arca, arcp, arcr, circlep, circler, circlec
+    
+    # newsegmenttype SegmentShape ArgX...,[Thickness],[Layer]
+    # newsegment SegmentShape,ArgX...,[Thickness],[Layer]
+    # getsegment[t,l,tl] SegmentShape,ArgX...,[Thickness],[Layer]
+    # {'Line':'pp', 'Polygon':'p', 'ArcA':'ppn', 'ArcP':'ppp', 'ArcR':'ppn', 'CircleP':'pp', 'CircleR':'pn', 'CircleC':'ppn'}
+    # ? Polyline where a string of points is connected by segments.
+    # Line is where point pairs are given, one pair for each segment.
+    ds.SetShape(typenum)
+    if type == 'Line': # pcbnew.S_SEGMENT:
+        # GetStart/SetStart
+        # GetEnd/SetEnd
+        s = pcbnew.wxPoint(points[0],points[1])
+        e = pcbnew.wxPoint(points[2],points[3])
+        ds.SetStart(s)
+        ds.SetEnd(e)
+    if type == 'Polygon': # typenum == pcbnew.S_POLYGON:
+        pass
+        # BuildPolyPointsList/SetPolyPoints
+    if type == 'Arc': # if typenum == pcbnew.S_ARC:
+        pass
+        # ArcA StartPoint, CenterPoint, AngleDegrees (+/- indicates direction)
+        # ArcP StartPoint, EndPoint, CenterPoint
+        # ArcR StartPoint, EndPoint, RadiusNative (+/- indicates direction, CW/CCW or RW/LW, make sure this matches Angle direction)
+        # GetArcStart/SetArcStart
+        # GetCenter/SetCenter
+        # GetAngle/SetAngle
+        # ds.SetArcStart(pcbnew.wxPoint(x1,y1))
+        # ds.SetAngle(float(angle)*10)
+        # ds.SetCenter(pcbnew.wxPoint(x2,y2))
+        
+    if type == 'Circle': # if typenum == pcbnew.S_CIRCLE:
+        pass
+        # CircleP CenterPoint, StartPoint
+        # CircleR CenterPoint, RadiusNative
+        # CirlceC CirclePoint1, CirclePoint2, RadiusNative (+/- indicates direction, CW/CCW or RW/LW, make sure this matches Angle direction)
+        # GetCenter/SetCenter
+        # GetArcStart/SetArcStart = GetEnd/SetEnd, with point anywhere on circle (i.e. Center.x + radius)
+        # ? GetArcAngle is 0.0
+    # if typenum == pcbnew.S_CURVE: # Bezier?
+        # GetBezierPoints/SetBezierPoints 
+        # GetBezControl1/SetBezControl1
+        # GetBezControl2/SetBezControl2
+    # if typenum == pcbnew.S_RECT:
+        
+    
 def pad_to_drawsegment(pad):
     #ds_shapes=['S_ARC', '', 'S_CURVE', 'S_LAST', 'S_POLYGON', '', 'S_SEGMENT']
     #p_shapes=['','', '', '', '']
-
+    # 5.1.5-(3) ['S_ARC', 'S_CIRCLE', 'S_CURVE', 'S_LAST', 'S_POLYGON', 'S_RECT', 'S_SEGMENT']
+    # ['PAD_SHAPE_CIRCLE', 'PAD_SHAPE_CUSTOM', 'PAD_SHAPE_OVAL', 'PAD_SHAPE_RECT', 'PAD_SHAPE_ROUNDRECT', 'PAD_SHAPE_TRAPEZOID']
     pshape2ds = {
         pcbnew.PAD_SHAPE_CIRCLE:pcbnew.S_CIRCLE,
         pcbnew.PAD_SHAPE_RECT:pcbnew.S_RECT,
@@ -3795,9 +4926,9 @@ def pad_to_drawsegment(pad):
     # ds.SetEnd(pcbnew.wxPoint(x2,y2))
     return ds
 
-    # viasbb_selected = filter(lambda x: isinstance(x,pcbnew.VIA_BLIND_BURIED),tracks_selected)
-    # viasthrough_selected = filter(lambda x: isinstance(x,pcbnew.VIA_THROUGH),tracks_selected)
-    # viasmicrovia_selected = filter(lambda x: isinstance(x,pcbnew.VIA_MICROVIA),tracks_selected)
+    # viasbb_selected = filter(lambda x:         isinstance(x,pcbnew.VIA_BLIND_BURIED),tracks_selected)
+    # viasthrough_selected = filter(lambda x:    isinstance(x,pcbnew.VIA_THROUGH),tracks_selected)
+    # viasmicrovia_selected = filter(lambda x:   isinstance(x,pcbnew.VIA_MICROVIA),tracks_selected)
     # viasnotdefined_selected = filter(lambda x: isinstance(x,pcbnew.VIA_NOT_DEFINED),tracks_selected)
 
     # toptext = filter(lambda x: isinstance(x,pcbnew.EDA_TEXT) and x.IsSelected(),getBoard().GetDrawings())
@@ -3919,6 +5050,169 @@ items in the preceeding sets.
                 for item, dep in data.iteritems()
                     if item not in ordered}
     assert not data, "Cyclic dependencies exist among these items:\n%s" % '\n'.join(repr(x) for x in data.iteritems())
+
+def isclose(a, b, rel_tol=1e-09, abs_tol=0.0):
+    return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
+
+def flatten(iterable):
+    iterator, sentinel, stack = iter(iterable), object(), []
+    while True:
+        value = next(iterator, sentinel)
+        if value is sentinel:
+            if not stack:
+                break
+            iterator = stack.pop()
+        elif isinstance(value, str):
+            yield value
+        else:
+            try:
+                new_iterator = iter(value)
+            except TypeError:
+                yield value
+            else:
+                stack.append(iterator)
+                iterator = new_iterator
+                
+def visual_test(originpoint):
+
+    x,y = originpoint
+    
+    # This should form a single "star" with lines from origin to each point.
+    # Two lines for all angles and three for angle 0 (-360, 0, and 360)
+    points = [wxPointUtil.toxy(1.0,theta*math.pi/180) for theta in range(-360,361,45)]
+    preflat=[((x,y),(p[0]+x,p[1]+y)) for p in points]
+    #flat=itertools.chain.from_iterable(itertools.chain.from_iterable(preflat))
+    flat = flatten(preflat)
+    ostr = "Line,{} split newdrawing refresh".format(','.join([str(int(k*1000000)) for k in flat]))
+    
+    r=kc(ostr)
+    text=r'This should form a single star with lines from origin\nto each point. Lines should be uniform around the circle.'
+    r=kc('Text,mm,{},{},{} split newdrawing justifyr refresh'.format(x-3,y,','.join(text.split(' '))))
+    
+    #return
+    x = originpoint[0]
+    y+=3*2
+
+    text = r'This is testing the core rounded corner python function call.'
+    r=kc('Text,mm,{},{},{} split newdrawing justifyr'.format(x-3,y,','.join(text.split(' '))))
+
+
+    inity=y
+    points = [wxPointUtil.toxy(1.0,theta*math.pi/180) for theta in range(-360,361,60)]
+    preflat = []
+    columncount = 0
+    # Text,mm,-20,-20,Hello\nLine2\nLine3\nLine4 split newdrawing justifyt justifyl refresh
+    for s in points:
+        for e in points:
+            columncount += 1
+            if not columncount % 3:
+                x+=3
+                y=inity
+            # else:
+                # y+=3*4
+            if isclose(s[0],e[0],rel_tol=1e-10,abs_tol=1e-10) and isclose(s[1],e[1],rel_tol=1e-10,abs_tol=1e-10):
+                continue
+            for m in points:
+                y+=3
+                if (isclose(s[0],m[0],rel_tol=1e-10,abs_tol=1e-10) and isclose(s[1],m[1],rel_tol=1e-10,abs_tol=1e-10)) or (isclose(e[0],m[0],rel_tol=1e-10,abs_tol=1e-10) and isclose(e[1],m[1],rel_tol=1e-10,abs_tol=1e-10)):
+                    continue
+                # print 'ArcO,mm,{},{},{},{},{},{}'.format(s[0],s[1],m[0],m[1],e[0],e[1])
+                # make a line from origin to each midpoint. The midpoint should be part of the arc in a visual check.
+                p = ((x,y),(s[0]+x,s[1]+y),(m[0]+x,m[1]+y),(e[0]+x,e[1]+y))
+                preflat.append((('PolylineRounded','mm',.2),p[1],p[2],p[3],p[1]))
+                # y+=3
+                # p = ((x,y),(s[0]+x,s[1]+y),(m[0]+x,m[1]+y),(e[0]+x,e[1]+y))
+                # preflat.append((('PolylineRounded','mm',.2),p[3],p[2],p[1],p[3]))
+                # y+=3
+                # p = ((x,y),(s[0]+x,s[1]+y),(m[0]+x,m[1]+y),(e[0]+x,e[1]+y))
+                # preflat.append((('PolylineRounded','mm',.2),p[1],p[3],p[2],p[1]))
+                # y+=3
+                # p = ((x,y),(s[0]+x,s[1]+y),(m[0]+x,m[1]+y),(e[0]+x,e[1]+y))
+                # preflat.append((('PolylineRounded','mm',.2),p[2],p[1],p[3],p[2]))
+                # y+=3
+                # p = ((x,y),(s[0]+x,s[1]+y),(m[0]+x,m[1]+y),(e[0]+x,e[1]+y))
+                # preflat.append((('PolylineRounded','mm',.2),p[2],p[3],p[1],p[2]))
+                # y+=3
+                # p = ((x,y),(s[0]+x,s[1]+y),(m[0]+x,m[1]+y),(e[0]+x,e[1]+y))
+                # preflat.append((('PolylineRounded','mm',.2),p[3],p[1],p[2],p[3]))
+                # y+=3
+                # p = ((x,y),(s[0]+x,s[1]+y),(m[0]+x,m[1]+y),(e[0]+x,e[1]+y))
+                # preflat.append((('PolylineRounded','mm',.2),p[3],p[2],p[1],p[3]))
+    print('flattening')
+    flat=flatten(preflat)
+    print('flattened')
+    ostr = "{} split newdrawing refresh".format(','.join([str(x) for x in flat]))
+    print('string length={}'.format(len(ostr)))
+    r=kc(ostr)
+
+# End rounded test
+
+    
+    return
+
+    x = originpoint[0]
+    y+=3*2
+
+    text = r'This verifies that the internal definition of toxy call matches the KiCAD definition of angle.\nEach line should point to the end point.'
+    r=kc('Text,mm,{},{},{} split newdrawing justifyr'.format(x-3,y,','.join(text.split(' '))))
+
+    d=[]
+    for theta in range(-360,361,15):
+        # make two drawings, one a line from origin to "toxy" and one an arc with the same angle.
+        p=wxPointUtil.toxy(1.0,theta*math.pi/180)
+        d.append('Line,mm,{},{},{},{},ArcC,mm,{},{},{},{},{}'.format(0+x,0+y,p[0]+x,p[1]+y,0+x,0+y,1+x,0+y,theta))
+        x+=3
+    ostr = "{} split newdrawing refresh".format(','.join([str(k) for k in d]))
+    r=kc(ostr)
+    
+    x = originpoint[0]
+    y+=3*2
+
+    text = r"This verifies many different point inputs to 'ArcO'.\nThe white lines point to the start/end points.\nThe pink line points to the mid point."
+    r=kc('Text,mm,{},{},{} split newdrawing justifyr justifyt'.format(x-3,y,','.join(text.split(' '))))
+
+    inity=y
+    points = [wxPointUtil.toxy(1.0,theta*math.pi/180) for theta in range(-360,361,60)]
+    groupsize = len(points)*2
+    preflat = []
+    columncount = 0
+    # Text,mm,-20,-20,Hello\nLine2\nLine3\nLine4 split newdrawing justifyt justifyl refresh
+    for s in points:
+        for e in points:
+            columncount += 1
+            if not columncount % 3:
+                x+=3
+                y=inity
+            # else:
+                # y+=3*4
+            if isclose(s[0],e[0],rel_tol=1e-10,abs_tol=1e-10) and isclose(s[1],e[1],rel_tol=1e-10,abs_tol=1e-10):
+                continue
+            for m in points:
+                y+=3
+                if (isclose(s[0],m[0],rel_tol=1e-10,abs_tol=1e-10) and isclose(s[1],m[1],rel_tol=1e-10,abs_tol=1e-10)) or (isclose(e[0],m[0],rel_tol=1e-10,abs_tol=1e-10) and isclose(e[1],m[1],rel_tol=1e-10,abs_tol=1e-10)):
+                    continue
+                # print 'ArcO,mm,{},{},{},{},{},{}'.format(s[0],s[1],m[0],m[1],e[0],e[1])
+                # make a line from origin to each midpoint. The midpoint should be part of the arc in a visual check.
+                preflat.append((('Layer,Margin,Line','mm'),(x,y),(m[0]+x,m[1]+y),('Layer,Dwgs.User,Line','mm'),(x,y),(s[0]+x,s[1]+y),('Line','mm'),(x,y),(e[0]+x,e[1]+y),('ArcO','mm'),(s[0]+x,s[1]+y),(m[0]+x,m[1]+y),(e[0]+x,e[1]+y)))
+    flat=itertools.chain.from_iterable(itertools.chain.from_iterable(preflat))
+    ostr = "{} split newdrawing refresh".format(','.join([str(x) for x in flat]))
+    r=kc(ostr)
+    
+    x = originpoint[0]
+    y+=3*2
+
+         
+    # points = [wxPointUtil.toxy(1.0,theta*math.pi/180) for theta in range(0,360,45)]
+    # perm = itertools.permutations(points,3)
+    # postsort=sorted(perm, key=operator.itemgetter(1,0,2))
+    # grp=itertools.izip_longest(*(iter(postsort),) * groupsize)
+    # preflat = [[[(p[0]+dx*3,p[1]+dy*3) for p in e1] for dy,e1 in enumerate(eg)] for dx,eg in enumerate(grp)]
+    # flat=itertools.chain.from_iterable(itertools.chain.from_iterable(itertools.chain.from_iterable(preflat)))
+    # ostr = "ArcO,{} split newdrawing refresh".format(','.join([str(int(k*1000000)) for k in flat]))
+    # r=kc(ostr)
+
+    x = originpoint[0]
+    y+=3*2
 
 
 def __main__(self):
