@@ -2238,7 +2238,7 @@ def streamgeom(inputiterable):
         ,'Polyline':'p'
         ,'Bezier':'pppp'
         ,'Layer':'s'
-        ,'Text':'pS'
+        ,'Text':'pT'
         ,'Point':'p'
         ,'Thickness':'n'
         ,'Dot':'n'
@@ -2274,6 +2274,16 @@ def streamgeom(inputiterable):
             continue
         #output('processing {}'.format(val))
         # output('VAL = {}'.format(val))
+        if currentarg == 'T':
+            if val == 'EndText':
+                currentarg = None
+                if outlist:
+                    yield outlist
+                    del outlist[:]
+            else:
+                outlist.append(val)
+            continue
+            
         argtype = isinstance(val, collections.Hashable)
         if argtype:
             argtype = argdict.get(val,False)
@@ -5086,14 +5096,14 @@ def visual_test(originpoint):
     ostr = "Line,{} split newdrawing refresh".format(','.join([str(int(k*1000000)) for k in flat]))
     
     r=kc(ostr)
-    text=r'This should form a single star with lines from origin\nto each point. Lines should be uniform around the circle.'
+    text=r'This should form a single star with lines from origin\nto each point. Lines should be uniform around the circle.  EndText'
     r=kc('Text,mm,{},{},{} split newdrawing justifyr refresh'.format(x-3,y,','.join(text.split(' '))))
     
     #return
     x = originpoint[0]
     y+=3*2
 
-    text = r'This is testing the core rounded corner python function call.'
+    text = r'This is testing the core rounded corner python function call. EndText'
     r=kc('Text,mm,{},{},{} split newdrawing justifyr'.format(x-3,y,','.join(text.split(' '))))
 
 
@@ -5153,7 +5163,7 @@ def visual_test(originpoint):
     x = originpoint[0]
     y+=3*2
 
-    text = r'This verifies that the internal definition of toxy call matches the KiCAD definition of angle.\nEach line should point to the end point.'
+    text = r'This verifies that the internal definition of toxy call matches the KiCAD definition of angle.\nEach line should point to the end point. EndText'
     r=kc('Text,mm,{},{},{} split newdrawing justifyr'.format(x-3,y,','.join(text.split(' '))))
 
     d=[]
@@ -5168,7 +5178,7 @@ def visual_test(originpoint):
     x = originpoint[0]
     y+=3*2
 
-    text = r"This verifies many different point inputs to 'ArcO'.\nThe white lines point to the start/end points.\nThe pink line points to the mid point."
+    text = r"This verifies many different point inputs to 'ArcO'.\nThe white lines point to the start/end points.\nThe pink line points to the mid point. EndText"
     r=kc('Text,mm,{},{},{} split newdrawing justifyr justifyt'.format(x-3,y,','.join(text.split(' '))))
 
     inity=y
@@ -5176,7 +5186,7 @@ def visual_test(originpoint):
     groupsize = len(points)*2
     preflat = []
     columncount = 0
-    # Text,mm,-20,-20,Hello\nLine2\nLine3\nLine4 split newdrawing justifyt justifyl refresh
+    # Text,mm,-20,-20,Hello\nLine2\nLine3\nLine4,EndText split newdrawing justifyt justifyl refresh
     for s in points:
         for e in points:
             columncount += 1
