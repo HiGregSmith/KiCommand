@@ -208,7 +208,9 @@ def getPcbnewWindow():
 #    top level.)
 
 Command = collections.namedtuple('Command','numoperands execute category helptext')
-UserCommand = collections.namedtuple('UserCommand','execute category helptext')
+UserCommand = collections.namedtuple('UserCommand','execute category helptext command')
+UserCommand.__str__ = lambda x: ': {} "{} {}" {} ;'.format(x.command,x.category,x.helptext,' '.join(x.execute))
+            
 #DrawParams = collections.namedtuple('DrawParams','thickness width height layer cpolyline zonepriority')
 DrawParams = collections.namedtuple('DrawParams','t w h l zt zp')
 # param Usage:
@@ -419,10 +421,10 @@ def kc(commandstring,returnval=0):
                         cat = cathelp[:firstspace]
                         help = cathelp[firstspace+1:]                        
                         help = decodestring(inspect.cleandoc(' '.join(help.split())))
-                        _dictionary[_newcommanddictionary][comm] = UserCommand(cdef,cat,help)
+                        _dictionary[_newcommanddictionary][comm] = UserCommand(cdef,cat,help,comm)
                     #output( "COMMAND %s DEFINITION %s\nCategory: {%s} Help: {%s}"%(comm,cdef,cat,help))
                     else:
-                        _dictionary[_newcommanddictionary][comm] = UserCommand(cdef,'','')
+                        _dictionary[_newcommanddictionary][comm] = UserCommand(cdef,'','',comm)
                         #_dictionary[_newcommanddictionary][comm] = ' '.join(cdef)
                 else: # delete a command in the user dictionary: ': COMMAND ;'
                     del(_dictionary['user'][_command_definition[0]])
@@ -2444,18 +2446,18 @@ def transposeMatrix(m):
 def getMatrixMinor(m,i,j):
     return [row[:j] + row[j+1:] for row in (m[:i]+m[i+1:])]
 
-def getMatrixDeternminant(m):
+def getMatrixDeterminant(m):
     #base case for 2x2 matrix
     if len(m) == 2:
         return m[0][0]*m[1][1]-m[0][1]*m[1][0]
 
     determinant = 0
     for c in range(len(m)):
-        determinant += ((-1)**c)*m[0][c]*getMatrixDeternminant(getMatrixMinor(m,0,c))
+        determinant += ((-1)**c)*m[0][c]*getMatrixDeterminant(getMatrixMinor(m,0,c))
     return determinant
 
 def getMatrixInverse(m):
-    determinant = getMatrixDeternminant(m)
+    determinant = getMatrixDeterminant(m)
     #special case for 2x2 matrix:
     if len(m) == 2:
         return [[m[1][1]/determinant, -1*m[0][1]/determinant],
@@ -2467,7 +2469,7 @@ def getMatrixInverse(m):
         cofactorRow = []
         for c in range(len(m)):
             minor = getMatrixMinor(m,r,c)
-            cofactorRow.append(((-1)**(r+c)) * getMatrixDeternminant(minor))
+            cofactorRow.append(((-1)**(r+c)) * getMatrixDeterminant(minor))
         cofactors.append(cofactorRow)
     cofactors = transposeMatrix(cofactors)
     for r in range(len(cofactors)):
@@ -2566,6 +2568,170 @@ def centerFromPoints_old(a,b,c):
     # r = sqrt[(a[0]-h)^2+(a[1]-k)^2]
     return (h,k)#,r)
     
+# from https://codereview.stackexchange.com/a/28565
+COMMANDS = set('MmZzLlHhVvCcSsQqTtAa')
+COMMAND_RE = re.compile("([MmZzLlHhVvCcSsQqTtAa])")
+FLOAT_RE = re.compile("[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
+
+def _tokenize_path(pathdef):
+    for x in COMMAND_RE.split(pathdef):
+        if x in COMMANDS:
+            yield x
+        for token in FLOAT_RE.findall(x):
+            yield token
+            
+# converted from https://stackoverflow.com/a/3162732
+def beziercubic(qp0,qp1,qp2):
+
+    cp0 = qp0[0],qp0[1]
+    cp3 = qp2[0],qp2[1]
+
+    # The two control points for the cubic are:
+
+    cp1 = qp0[0] + 2.0/3 *(qp1[0]-qp0[0]),qp0[1] + 2.0/3 *(qp1[1]-qp0[1])
+    cp2 = qp2[0] + 2.0/3 *(qp1[0]-qp2[0]),qp2[1] + 2.0/3 *(qp1[1]-qp2[1])
+    # cp0 = qp0
+    # cp3 = qp2
+
+    # # The two control points for the cubic are:
+
+    # cp1 = qp0 + 2.0/3 *(qp1-qp0)
+    # cp2 = qp2 + 2.0/3 *(qp1-qp2)
+
+    return cp0,cp1,cp2,cp3
+    
+# converted from https://mortoray.com/2017/02/16/rendering-an-svg-elliptical-arc-as-bezier-curves/
+def bezierfromellipticalarc():
+    # /**
+        # Perform the endpoint to center arc parameter conversion as detailed in the SVG 1.1 spec.
+        # F.6.5 Conversion from endpoint to center parameterization
+
+        # @param r must be a ref in case it needs to be scaled up, as per the SVG spec
+    # */
+    # internal static void EndpointToCenterArcParams( float2 p1, float2 p2, ref float2 r_, float xAngle, 
+        # bool flagA, bool flagS, out float2 c, out float2 angles )
+    # {
+        # double rX = Math.Abs(r_.X);
+        # double rY = Math.Abs(r_.Y);
+
+        # //(F.6.5.1)
+        # double dx2 = (p1.X - p2.X) / 2.0;
+        # double dy2 = (p1.Y - p2.Y) / 2.0;
+        # double x1p = Math.Cos(xAngle)*dx2 + Math.Sin(xAngle)*dy2;
+        # double y1p = -Math.Sin(xAngle)*dx2 + Math.Cos(xAngle)*dy2;
+
+        # //(F.6.5.2)
+        # double rxs = rX * rX;
+        # double rys = rY * rY;
+        # double x1ps = x1p * x1p;
+        # double y1ps = y1p * y1p;
+        # // check if the radius is too small `pq < 0`, when `dq > rxs * rys` (see below)
+        # // cr is the ratio (dq : rxs * rys) 
+        # double cr = x1ps/rxs + y1ps/rys;
+        # if (cr > 1) {
+            # //scale up rX,rY equally so cr == 1
+            # var s = Math.Sqrt(cr);
+            # rX = s * rX;
+            # rY = s * rY;
+            # rxs = rX * rX;
+            # rys = rY * rY;
+        # }
+        # double dq = (rxs * y1ps + rys * x1ps);
+        # double pq = (rxs*rys - dq) / dq;
+        # double q = Math.Sqrt( Math.Max(0,pq) ); //use Max to account for float precision
+        # if (flagA == flagS)
+            # q = -q;
+        # double cxp = q * rX * y1p / rY;
+        # double cyp = - q * rY * x1p / rX;
+
+        # //(F.6.5.3)
+        # double cx = Math.Cos(xAngle)*cxp - Math.Sin(xAngle)*cyp + (p1.X + p2.X)/2;
+        # double cy = Math.Sin(xAngle)*cxp + Math.Cos(xAngle)*cyp + (p1.Y + p2.Y)/2;
+
+        # //(F.6.5.5)
+        # double theta = svgAngle( 1,0, (x1p-cxp) / rX, (y1p - cyp)/rY );
+        # //(F.6.5.6)
+        # double delta = svgAngle(
+            # (x1p - cxp)/rX, (y1p - cyp)/rY,
+            # (-x1p - cxp)/rX, (-y1p-cyp)/rY);
+        # delta = Math.Mod(delta, Math.PIf * 2 );
+        # if (!flagS)
+            # delta -= 2 * Math.PIf;
+
+        # r_ = float2((float)rX,(float)rY);
+        # c = float2((float)cx,(float)cy);
+        # angles = float2((float)theta, (float)delta);
+    # }
+
+    # static float svgAngle( double ux, double uy, double vx, double vy )
+    # {
+        # var u = float2((float)ux, (float)uy);
+        # var v = float2((float)vx, (float)vy);
+        # //(F.6.5.4)
+        # var dot = Vector.Dot(u,v);
+        # var len = Vector.Length(u) * Vector.Length(v);
+        # var ang = Math.Acos( Math.Clamp(dot / len,-1,1) ); //floating point precision, slightly over values appear
+        # if ( (u.X*v.Y - u.Y*v.X) < 0)
+            # ang = -ang;
+        # return ang;
+    # }
+    pass
+
+def reflected_point(point,around):
+    return 2*around[0]-point[0],2*around[1]-point[1]
+
+# would also be nice to handle projection
+# https://www.cis.rit.edu/class/simg782/lectures/lecture_02/lec782_05_02.pdf
+
+class matrixTransform2d:
+    _currentTransformation = None
+    _dimensions = None
+    def __init__(self,dimensions=3):
+        self._dimensions = dimensions
+        self._currentTransformation = [[0] * self._dimensions for row in xrange(self._dimensions)]
+        for i in xrange(self._dimensions):
+            self._currentTransformation[i][i] = 1.0
+        # flip around the x axis to compensate for KiCAD's reversed y coordinates
+        self._currentTransformation[1][1] = -1.0 
+         # operator.setitem(a, b, c) # Set the value of a at index b to c.
+    def zero(self):
+        for i in xrange(self._dimensions):
+            for j in xrange(self._dimensions):
+                self._currentTransformation[i][j] = 0.0
+    def identity(self):
+        self.zero()
+        for i in xrange(self._dimensions):
+            self._currentTransformation[i][i] = 1.0
+    def copy(self):
+        return [[element for element in row] for row in self._currentTransformation]
+    def multiply(self, G):
+        result = []
+        for j in range(len(G)): #this loops through a column of F & rows of G
+            total = list(range(len(G[0])))
+            for i in range(len(G[0])): #this loops through columns of the matrix
+                total[i] += self._currentTransformation[i][j] * G[j][i]
+            result.append(total)
+        return result
+    def multiplyInPlace(self, G):
+        # create a temporary copy to hold the source numbers
+        t=self.copy()
+        
+    def transform(self,point):
+        m=self._currentTransformation
+        p=point
+        return [m[0][0] * p [0] + m[0][1] * p[1] + m[0][2],  m[1][0] * p [1] + m[1][1] * p[1] + m[1][2]]
+        # returnval = list(xrange(self._dimensions))
+        # for row in xrange(self._dimensions):
+            # returnval[row] = \
+                # sum(itertools.starmap(operator.mul,
+                # itertools.izip_longest(
+                    # itertools.imap(self._currentTransformation[row].__getitem__,xrange(self._dimensions))
+                    # , point, fillvalue='1')
+                    # )
+                    # ) 
+                    
+        
+        
 class commands:
     classinstance = None
     def NEWNET(self,netname):
@@ -2681,74 +2847,349 @@ class commands:
     # "m 81.38357,74.230848 5.612659,1.870887 5.211757,3.474503 2.138156,2.138157 10.958048,-6.1472 0.53454,5.078121 -1.06908,4.009044 -2.80633,4.276312 -2.539056,1.603616 1.202716,4.276312 9.48806,-2.939963 13.36348,8.686253 -8.95353,-0.4009 -2.13815,5.34539 -5.21176,-2.67269 -4.67722,4.54358 -2.40542,-3.0736 -4.009046,6.94901 -3.741775,4.27631 -4.142676,2.53906 1.870887,3.34087 v 3.34087 l -4.409948,2.53906 h -2.806329 l -2.80633,-0.53454 -0.267271,-2.00452 1.469982,-1.60362 0.668176,-0.4009 -0.53454,-1.73726 -4.142676,0.53454 -4.677217,-0.93544 -3.34087,-0.66817 -1.336347,-0.13364 -2.405428,3.87541 -1.469982,1.33635 -1.603616,0.66817 -5.479026,-0.66817 -2.405425,-2.80633 -0.133636,-1.60362 3.207235,-3.34087 1.870887,-2.53906 -2.80633,-2.93996 -2.672696,-4.40995 -0.668174,-2.40543 -4.409945,5.47903 -3.207234,-5.34539 -5.078121,2.13815 -3.474506,-6.14719 -8.285356,0.26726 13.229844,-8.418985 10.022607,4.81085 0.400905,-5.34539 -3.741775,-2.138156 -2.405425,-3.474503 -0.668173,-3.073601 v -7.884451 l 13.363474,5.078121 3.608139,-2.939965 5.211757,-2.271789 3.875408,-1.33635 2.138156,0.133636 3.207234,-3.474503 4.677217,-2.939965 2.405425,-0.668174 z" 1 mm fromsvg drawsegments
     # https://www.w3.org/TR/SVG11/paths.html#PathDataGeneralInformation
 
+    # "M172 1745q17 67 70 67q75 0 75 -65q0 -24 -6 -48l-65 -263q-18 -70 -74 -70q-72 0 -72 68q0 22 10 63z"
     def fromsvg(self,inputs):
         """Geometry,Conversion [PATH_D_ATTRIBUTE SCALE] Converts SVG path element "d attribute"
-            to a list of coordinates suitable for drawelements. Applies SCALE
-            to all coordinates."""
+            to a list geoms suitable for the newdrawing command. Applies SCALE
+            to all coordinates. newdrawing,"""
         #print(path)
+        transform = matrixTransform2d()
         path = inputs[0]
-        scale = inputs[1]
-        tokens = ['']
-        for char in path:
-            if char in '0123456789-+.':
-                tokens[-1] += char
+        # if isinstance(inputs[1],basestring):
+            # inputnumbers = split(inputs[1])
+        # else:
+            # inputnumbers = inputs[1]
+        
+        scale = float(inputs[1])
+        geoms = []
+        tokenized = _tokenize_path(path)
+        command = None
+        position = None
+        
+        points = [[0.0,0.0],[0.0,0.0],[0.0,0.0],[0.0,0.0]]
+        initialposition = None
+        #token = tokenized.next()
+        for token in tokenized:
+            if token in "mlhvcsqtaMLHVCSQTA":
+                previouscommand = command
+                command = token
+                currenttoken = tokenized.next()
+            else:
+                currenttoken = token
+            output('token={}; currenttoken={}'.format(token,currenttoken))
+            
+            if token in 'zZ':
+                if initialposition[0] != position[0] or initialposition[1] != position[1]:
+                    geoms.append(['Line',transform.transform(position),transform.transform(initialposition)])
                 continue
-            if tokens[-1]:
-                tokens.append('')
-            if char not in ' ,':
-                tokens[-1] += char
-        position = [0.0,0.0]
-        currenttoken = 0
-        listresult = []
-        #print(tokens)
-        scale = float(scale)
-        while currenttoken < len(tokens):
-            token = tokens[currenttoken]
-            try: 
-                x = float(token)*scale
-                currenttoken += 1
-                y = float(tokens[currenttoken])*scale
-                currenttoken += 1
-                position[0] += x
-                position[1] += y
-                listresult[-1].append((position[0],position[1]))
-                continue
-            except:
-                if token == 'm':
-                    currenttoken += 1
-                    position[0] = float(tokens[currenttoken])*scale
-                    currenttoken += 1
-                    position[1] = float(tokens[currenttoken])*scale
-                    currenttoken += 1
-                    listresult.append([(position[0],position[1])])
-                    continue
-                if token == 'l':
-                    currenttoken += 1
-                    position[0] += float(tokens[currenttoken])*scale
-                    currenttoken += 1
-                    position[1] += float(tokens[currenttoken])*scale
-                    currenttoken += 1
-                    #position = pcbnew.wxPoint(x,y)
-                    listresult[-1].append((position[0],position[1]))
-                    continue
-                if token == 'h':
-                    currenttoken += 1
-                    position[0] += float(tokens[currenttoken])*scale
-                    currenttoken += 1
-                    listresult[-1].append((position[0],position[1]))
-                    continue
-                if token == 'v':
-                    currenttoken += 1
-                    position[1] += float(tokens[currenttoken])*scale
-                    currenttoken += 1
-                    listresult[-1].append((position[0],position[1]))
-                    continue
-                if token == 'z':
-                    currenttoken += 1
-                    listresult[-1].append(listresult[-1][0])
-                    continue
-                output('Bad SVG token: %s'%token)
-        return listresult
+            elif command == 'm':
+                # "If a relative moveto (m) appears as the first element of the path, then it is treated as a pair of absolute coordinates. In this case, subsequent pairs of coordinates are treated as relative even though the initial moveto is interpreted as an absolute moveto."
+                if position is None:
+                    position = [0.0,0.0]
+                position[0] += float(currenttoken)      * scale
+                position[1] += float(tokenized.next())  * scale
+                initialposition = list(position)
+                command = 'l'
+            elif command == 'M':
+            # "M633 1437q0 83 78 83h290q86 0 86 -78q0 -72 -88 -72h-208v-72q216 0 366 -151q159 -160 159 -389t-204 -405q-137 -118 -321 -118v-134q0 -101 -91 -101h-282q-89 0 -89 73q0 76 90 76h214v86q-217 0 -373 156q-160 160 -160 361q0 228 120 355q184 195 413 195v135z M633 1147q-132 0 -245 -88q-134 -104 -134 -293q0 -171 128 -284q102 -90 251 -90v755zM792 1147v-755q164 0 263 108q110 120 110 277q0 164 -134 282q-100 88 -239 88z" 0.02 mm fromsvg newdrawing refresh
+            # "M633 1437q0 83 78 83" 0.02 mm fromsvg newdrawing refresh
+                if position is None:
+                    position = [0.0,0.0]
+                output('currenttoken={}'.format(currenttoken))
+                position[0] = float(currenttoken)       * scale
+                position[1] = float(tokenized.next())   * scale
+                initialposition = list(position)
+                command = 'L'
+            elif command == 'l':
+                points[0][0] = position[0]
+                points[0][1] = position[1]
+                position[0] += float(currenttoken)      * scale
+                position[1] += float(tokenized.next())  * scale
+                geoms.append(['Line',transform.transform(points[0]),transform.transform(position)])
+            elif command == 'L':
+                points[0][0] = position[0]
+                points[0][1] = position[1]
+                position[0] = float(currenttoken)       * scale
+                position[1] = float(tokenized.next())   * scale
+                geoms.append(['Line',transform.transform(points[0]),transform.transform(position)])
+            elif command == 'h':
+                points[0][0] = position[0]
+                points[0][1] = position[1]
+                position[0] += float(currenttoken)      * scale
+                geoms.append(['Line',transform.transform(points[0]),transform.transform(position)])
+            elif command == 'H':
+                points[0][0] = position[0]
+                points[0][1] = position[1]
+                position[0] = float(currenttoken)       * scale
+                geoms.append(['Line',transform.transform(points[0]),transform.transform(position)])
+            elif command == 'v':
+                points[0][0] = position[0]
+                points[0][1] = position[1]
+                position[1] += float(currenttoken)      * scale
+                geoms.append(['Line',transform.transform(points[0]),transform.transform(position)])
+            elif command == 'V':
+                points[0][0] = position[0]
+                points[0][1] = position[1]
+                position[1] = float(currenttoken)       * scale
+                geoms.append(['Line',transform.transform(points[0]),transform.transform(position)])
+            elif command == 'c':
+                points[0][0] = position[0]
+                points[0][1] = position[1]
+                points[1][0] = points[0][0]+float(currenttoken)       * scale 
+                points[1][1] = points[0][1]+float(tokenized.next())   * scale
+                points[2][0] = points[0][0]+float(tokenized.next())       * scale 
+                points[2][1] = points[0][1]+float(tokenized.next())   * scale
+                position[0] = points[0][0]+float(tokenized.next())    * scale
+                position[1] = points[0][1]+float(tokenized.next())    * scale
+                geoms.append(['Bezier',transform.transform(points[0]),transform.transform(points[1]),transform.transform(points[2]),transform.transform(position)])
+            elif command == 'C':
+                points[0][0] = position[0]
+                points[0][1] = position[1]
+                points[1][0] = float(currenttoken)       * scale 
+                points[1][1] = float(tokenized.next())   * scale
+                points[2][0] = float(tokenized.next())       * scale 
+                points[2][1] = float(tokenized.next())   * scale
+                position[0] = float(tokenized.next())    * scale
+                position[1] = float(tokenized.next())    * scale
+                geoms.append(['Bezier',transform.transform(points[0]),transform.transform(points[1]),transform.transform(points[2]),transform.transform(position)])
+            elif command == 's':
+                # Draws a cubic Bezier curve from the current point to (x,y). The first control point is assumed to be the reflection of the second control point on the previous command relative to the current point. (If there is no previous command or if the previous command was not an C, c, S or s, assume the first control point is coincident with the current point.) (x2,y2) is the second control point (i.e., the control point at the end of the curve). S (uppercase) indicates that absolute coordinates will follow; s (lowercase) indicates that relative coordinates will follow. Multiple sets of coordinates may be specified to draw a polybezier. At the end of the command, the new current point becomes the final (x,y) coordinate pair used in the polybezier.
+                if previouscommand in "cCsS":
+                    points[1] = list(reflected_point(points[2],position))
+                else:
+                    points[1] = list(position)
+                    # control point 
+                points[0][0] = position[0]
+                points[0][1] = position[1]
+                points[2][0] = points[0][0]+float(currenttoken)    * scale
+                points[2][1] = points[0][1]+float(tokenized.next())    * scale                    
+                position[0] = points[0][0]+float(tokenized.next())    * scale
+                position[1] = points[0][1]+float(tokenized.next())    * scale                    
+                geoms.append(['Bezier',transform.transform(points[0]),transform.transform(points[1]),transform.transform(points[2]),transform.transform(position)])
+                
+            elif command == 'S':
+                if previouscommand in "cCsS":
+                    points[1] = list(reflected_point(points[2],position))
+                else:
+                    points[1] = list(position)
+                    # control point 
+                points[0][0] = position[0]
+                points[0][1] = position[1]
+                points[2][0] = float(currenttoken)    * scale
+                points[2][1] = float(tokenized.next())    * scale                    
+                position[0] = float(tokenized.next())    * scale
+                position[1] = float(tokenized.next())    * scale                    
+                geoms.append(['Bezier',transform.transform(points[0]),transform.transform(points[1]),transform.transform(points[2]),transform.transform(position)])
+            elif command == 'q':
+                points[0][0] = position[0]
+                points[0][1] = position[1]
+                points[1][0] = points[0][0]+float(currenttoken)       * scale 
+                points[1][1] = points[0][1]+float(tokenized.next())   * scale
+                position[0] = points[0][0]+float(tokenized.next())    * scale
+                position[1] = points[0][1]+float(tokenized.next())    * scale
+                geoms.append(['Bezier',itertools.imap(transform.transform,beziercubic(points[0],points[1],position))])
+            elif command == 'Q':
+                points[0][0] = position[0]
+                points[0][1] = position[1]
+                points[1][0] = float(currenttoken)       * scale 
+                points[1][1] = float(tokenized.next())   * scale
+                position[0] = float(tokenized.next())    * scale
+                position[1] = float(tokenized.next())    * scale
+                geoms.append(['Bezier',itertools.imap(transform.transform,beziercubic(points[0],points[1],position))])
+            elif command == 't':
+                # Draws a quadratic Bezier curve from the current point to (x,y). The control point is assumed to be the reflection of the control point on the previous command relative to the current point. (If there is no previous command or if the previous command was not a Q, q, T or t, assume the control point is coincident with the current point.) T (uppercase) indicates that absolute coordinates will follow; t (lowercase) indicates that relative coordinates will follow. At the end of the command, the new current point becomes the final (x,y) coordinate pair used in the polybezier.
+                if previouscommand in "qQtT":
+                    points[1] = list(reflected_point(points[1],position))
+                else:
+                    points[1] = list(position)
+                    # control point 
+                points[0][0] = position[0]
+                points[0][1] = position[1]
+                position[0] = points[0][0]+float(currenttoken)    * scale
+                position[1] = points[0][1]+float(tokenized.next())    * scale                    
+                geoms.append(['Bezier',itertools.imap(transform.transform,beziercubic(points[0],points[1],position))])
+            elif command == 'T':
+                if previouscommand in "qQtT":
+                    points[1] = list(reflected_point(points[1],position))
+                else:
+                    points[1] = list(position)
+                    # control point 
+                points[0][0] = position[0]
+                points[0][1] = position[1]
+                position[0] = float(currenttoken)    * scale
+                position[1] = float(tokenized.next())    * scale                    
+                geoms.append(['Bezier',itertools.imap(transform.transform,beziercubic(points[0],points[1],position))])
+            elif command == 'a':
+                points[0][0] = position[0]
+                points[0][1] = position[1]
+                # float(currenttoken)        * scale # rx
+                float(tokenized.next())      * scale # ry
+                float(tokenized.next())              # x-axis rotation (degrees)
+                bool(int(tokenized.next()))          # large-arc-flag (0 or 1)
+                bool(int(tokenized.next()))          # sweep-flag     (0 or 1)
+                position[0] = points[0][0]+float(tokenized.next())    * scale
+                position[1] = points[0][1]+float(tokenized.next())    * scale                    
+                output('Unsupported SVG path command: %s - elliptical arc (relative)'%command)
+                # (rx ry x-axis-rotation large-arc-flag sweep-flag x y)+
+            elif command == 'A':
+                points[0][0] = position[0]
+                points[0][1] = position[1]
+                # float(currenttoken)        * scale # rx
+                float(tokenized.next())      * scale # ry
+                float(tokenized.next())              # x-axis rotation (degrees)
+                bool(int(tokenized.next()))          # large-arc-flag (0 or 1)
+                bool(int(tokenized.next()))          # sweep-flag     (0 or 1)
+                position[0] = float(tokenized.next())    * scale
+                position[1] = float(tokenized.next())    * scale                    
+                output('Unsupported SVG path command: %s - elliptical arc (absolute)'%command)
+            if(geoms):
+                output(geoms[-1])
+            # MoveTo: M, m (implicit L or l)
+            # LineTo: L, l, H, h, V, v
+            # Cubic Bezier Curve: C, c, S, s
+            # Quadratic Bezier Curve: Q, q, T, t
+            # Elliptical Arc Curve: A, a
+            # ClosePath: Z, z
+            
+            # An upper-case command specifies absolute coordinates, while a lower-case command specifies coordinates relative to the current position.
+            # It is always possible to specify a negative value as an argument to a command:
+            # negative angles will be anti-clockwise;
+            # absolute negative x and y values are interpreted as negative coordinates;
+            # relative negative x values move to the left, and relative negative y values move upwards.
+            
+            
+        # tokens = ['']
+        # for char in path:
+            # if char in '0123456789-+.':
+                # tokens[-1] += char
+                # continue
+            # if tokens[-1]:
+                # tokens.append('')
+            # if char not in ' ,':
+                # tokens[-1] += char
+        # position = [0.0,0.0]
+        # currenttoken = 0
+        # listresult = []
+        # #print(tokens)
+        # scale = float(scale)
+        # while currenttoken < len(tokens):
+            # token = tokens[currenttoken]
+            # try: 
+                # x = float(token)*scale
+                # currenttoken += 1
+                # y = float(tokens[currenttoken])*scale
+                # currenttoken += 1
+                # position[0] += x
+                # position[1] += y
+                # listresult[-1].append((position[0],position[1]))
+                # continue
+            # except:
+                # if token == 'm':
+                    # currenttoken += 1
+                    # position[0] = float(tokens[currenttoken])*scale
+                    # currenttoken += 1
+                    # position[1] = float(tokens[currenttoken])*scale
+                    # currenttoken += 1
+                    # listresult.append([(position[0],position[1])])
+                    # continue
+                # if token == 'l':
+                    # currenttoken += 1
+                    # position[0] += float(tokens[currenttoken])*scale
+                    # currenttoken += 1
+                    # position[1] += float(tokens[currenttoken])*scale
+                    # currenttoken += 1
+                    # #position = pcbnew.wxPoint(x,y)
+                    # listresult[-1].append((position[0],position[1]))
+                    # continue
+                # if token == 'h':
+                    # currenttoken += 1
+                    # position[0] += float(tokens[currenttoken])*scale
+                    # currenttoken += 1
+                    # listresult[-1].append((position[0],position[1]))
+                    # continue
+                # if token == 'v':
+                    # currenttoken += 1
+                    # position[1] += float(tokens[currenttoken])*scale
+                    # currenttoken += 1
+                    # listresult[-1].append((position[0],position[1]))
+                    # continue
+                # if token == 'z':
+                    # currenttoken += 1
+                    # listresult[-1].append(listresult[-1][0])
+                    # continue
+                # output('Bad SVG token: %s'%token)
+                # currenttoken += 1
+        return geoms
+
+    # def fromsvg_old(self,inputs):
+        # """Geometry,Conversion [PATH_D_ATTRIBUTE SCALE] Converts SVG path element "d attribute"
+            # to a list of coordinates suitable for drawelements. Applies SCALE
+            # to all coordinates."""
+        # #print(path)
+        # path = inputs[0]
+        # scale = inputs[1]
+        # tokens = ['']
+        # for char in path:
+            # if char in '0123456789-+.':
+                # tokens[-1] += char
+                # continue
+            # if tokens[-1]:
+                # tokens.append('')
+            # if char not in ' ,':
+                # tokens[-1] += char
+        # position = [0.0,0.0]
+        # currenttoken = 0
+        # listresult = []
+        # #print(tokens)
+        # scale = float(scale)
+        # while currenttoken < len(tokens):
+            # token = tokens[currenttoken]
+            # try: 
+                # x = float(token)*scale
+                # currenttoken += 1
+                # y = float(tokens[currenttoken])*scale
+                # currenttoken += 1
+                # position[0] += x
+                # position[1] += y
+                # listresult[-1].append((position[0],position[1]))
+                # continue
+            # except:
+                # if token == 'm':
+                    # currenttoken += 1
+                    # position[0] = float(tokens[currenttoken])*scale
+                    # currenttoken += 1
+                    # position[1] = float(tokens[currenttoken])*scale
+                    # currenttoken += 1
+                    # listresult.append([(position[0],position[1])])
+                    # continue
+                # if token == 'l':
+                    # currenttoken += 1
+                    # position[0] += float(tokens[currenttoken])*scale
+                    # currenttoken += 1
+                    # position[1] += float(tokens[currenttoken])*scale
+                    # currenttoken += 1
+                    # #position = pcbnew.wxPoint(x,y)
+                    # listresult[-1].append((position[0],position[1]))
+                    # continue
+                # if token == 'h':
+                    # currenttoken += 1
+                    # position[0] += float(tokens[currenttoken])*scale
+                    # currenttoken += 1
+                    # listresult[-1].append((position[0],position[1]))
+                    # continue
+                # if token == 'v':
+                    # currenttoken += 1
+                    # position[1] += float(tokens[currenttoken])*scale
+                    # currenttoken += 1
+                    # listresult[-1].append((position[0],position[1]))
+                    # continue
+                # if token == 'z':
+                    # currenttoken += 1
+                    # listresult[-1].append(listresult[-1][0])
+                    # continue
+                # output('Bad SVG token: %s'%token)
+                # currenttoken += 1
+        # return listresult
     
     def tocommand(self,elementlist,commandname):
         """Programming,Elements [ELEMENTLIST COMMANDNAME] Create a user command named COMMANDNAME that draws the drawsegments in ELEMENTLIST."""
@@ -3264,7 +3705,7 @@ class commands:
         return result
 
     def newdrawing(self,*c):
-        """Draw [OBJECTS] Define new drawsegment using drawparameters."""
+        """Draw [GEOMS] Define new DRAWSEGMENT shapes, sing layers and attributes from drawparams."""
     
         c=c[0]
         layerID = getLayerID(_user_stacks['drawparams']['l'])
@@ -3688,7 +4129,7 @@ class commands:
         return results
 
     def newtrack(self,*c):
-        """Draw [OBJECTS] Define new tracks using drawparameters."""
+        """Draw [OBJECTS] Define new tracks using layers and attributes from drawparams."""
         results = []
         c=c[0]
         layerID = getLayerID(_user_stacks['drawparams']['l'])
@@ -3977,13 +4418,14 @@ def SAVE(name):
     dictname = 'user'
     if not os.path.exists(USERSAVEPATH):
         os.makedirs(USERSAVEPATH)
-        output('created ~/kicad/kicommand')
+        output('created '%USERSAVEPATH)#~/kicad/kicommand')
     output("saving to %s"%name)
     new_path = os.path.join(USERSAVEPATH, name)
     with open(new_path,'w') as f:
         commands = _dictionary[dictname].iteritems()
         for command,definition in sorted(commands,key=lambda x:x[0]):
-            f.write( ": %s %s ;\n"%(command,_dictionary[dictname][command]))
+            f.write(str(_dictionary[dictname][command]))
+            f.write('\n')
 
 def EXPLAIN(commandstring,category=None):
     output('Explaining',commandstring)
