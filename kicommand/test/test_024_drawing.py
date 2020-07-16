@@ -4,12 +4,12 @@ from kicommand.kicommand import kc
 class TestDrawing(unittest.TestCase):
 
     def test_getparams_drawparams(self):
-        self.assertEqual(kc('1,0.5,1 mm h,t,w param 0,0 int zp,zt param F.SilkS l param getparams'),{'h': 1000000.0, 'zp': 0, 'zt': 0, 't': 500000.0, 'w': 1000000.0, 'l': 'F.SilkS'} )
-        self.assertEqual(kc('F.SilkS l param getparams'),{'h': 1000000.0, 'zp': 0, 'zt': 0, 't': 500000.0, 'w': 1000000.0, 'l': 'F.SilkS'} )
+        self.assertEqual(kc('1,0.5,1 mm h,t,w params 0,0 int zp,zt params F.SilkS l params getparams'),{'h': 1000000.0, 'zp': 0, 'zt': 0, 't': 500000.0, 'w': 1000000.0, 'l': 'F.SilkS'} )
+        self.assertEqual(kc('F.SilkS l params getparams'),{'h': 1000000.0, 'zp': 0, 'zt': 0, 't': 500000.0, 'w': 1000000.0, 'l': 'F.SilkS'} )
         self.assertEqual(kc('4,2,3 mm B.Cu drawparams getparams'),{'h': 3000000.0, 'zp': 0, 'zt': 0, 't': 4000000.0, 'w': 2000000.0, 'l': 'B.Cu'} )
         
     # def test_drawsegments(self):
-        # track = kc('clear 0.5 mm t param F.Cu l param 10,10,20,30 mm '
+        # track = kc('clear t 0.5 mm params l F.Cu params 10,10,20,30 mm '
                         # 'drawsegments delist delist')
 
     def test_drawsegments_wxpoint_attr_length(self):

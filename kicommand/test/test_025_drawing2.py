@@ -4,9 +4,9 @@ from kicommand.kicommand import kc
 class TestDrawing2(unittest.TestCase):
 
     # def test_getparams_drawparams(self):
-        # result = kc('clear F.SilkS layernums l param 0,0,0,1,1,1,1,0,0,0 mm 10 int list *. drawsegments delist 1 mm list swap round',returnval=-1)
+        # result = kc('clear F.SilkS l params 0,0,0,1,1,1,1,0,0,0 mm 10 int list *. drawsegments delist 1 mm list swap round',returnval=-1)
     # # def test_drawsegments(self):
-        # # track = kc('clear 0.5 mm t param F.Cu l param 10,10,20,30 mm '
+        # # track = kc('clear 0.5 mm t params F.Cu l params 10,10,20,30 mm '
                         # # 'drawsegments delist delist')
 
     def test_rotate_round_flatlist_select_selected_drawings(self):        
@@ -42,7 +42,7 @@ class TestDrawing2(unittest.TestCase):
         
     def test_cut(self):
         #result = kc('newboard clear 0,0,10,0 mm drawsegments delist 4,1,4,-1 mm drawsegments delist select',returnval=-1)
-        self.assertEqual(kc('newboard F.SilkS l param clear 0,0,10,0 mm drawsegments delist 4,1,4,-1 mm drawsegments delist select cut drawings ends flatlist flatlist'), [4000000, 0, 10000000, 0, 0, 0, 4000000, 0])
+        self.assertEqual(kc('newboard F.SilkS l params clear 0,0,10,0 mm drawsegments delist 4,1,4,-1 mm drawsegments delist select cut drawings ends flatlist flatlist'), [4000000, 0, 10000000, 0, 0, 0, 4000000, 0])
         
         # CALL: 'callfilter', 'calllist', 'callnotfilter', 'fcall', 
         # FILTER: 'notselected', 'deselect', 'matchreference', 

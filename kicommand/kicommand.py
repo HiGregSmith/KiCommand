@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 
 # In python2, Use print function with parenthesis
 from __future__ import print_function
@@ -25,14 +26,58 @@ import re
 from textwrap import wrap
 import wx
 import operator
+import codecs
 
 try:
+    import kicommand_fonts 
     from wxpointutil import wxPointUtil
+    import svgutil
     import kicommand_gui
+    from point_in_polygon import wn_PnPoly, cn_PnPoly
 except:
+    from .point_in_polygon import wn_PnPoly, cn_PnPoly
+    from . import kicommand_fonts
     from .wxpointutil import wxPointUtil
     from . import kicommand_gui
+    import svgutil
 
+
+# added to the module in Python 3.3. Alternatively you could use the code below which will also work in earlier Python versions.
+# https://stackoverflow.com/a/8348914
+try:
+    import textwrap
+    textwrap.indent
+except AttributeError:  # undefined function (wasn't added until Python 3.3)
+    def indent(text, amount, ch=' '):
+        padding = amount * ch
+        return ''.join(padding+line for line in text.splitlines(True))
+else:
+    def indent(text, amount, ch=' '):
+        return textwrap.indent(text, amount * ch)
+        
+sys.modules['kicommand_fonts'] = kicommand_fonts
+
+#font = kicommand_fonts.fontmanager().getfonttable('osi23')
+# fontmanager = None # kicommand_fonts.fontmanager()
+# font = None # fontmanager.getfont('NotoSans-Regular')
+class fonts:
+    _fontmanager = None
+    _font = None
+    @classmethod
+    def getfontmanager(selfclass):
+        if not selfclass._fontmanager:
+            selfclass._fontmanager = kicommand_fonts.fontmanager()
+        return selfclass._fontmanager
+    @classmethod
+    def getfont(selfclass,fontstring=None):
+        if not selfclass._font or fontstring:
+            if not selfclass._fontmanager:
+                selfclass._fontmanager = kicommand_fonts.fontmanager()
+            if not fontstring:
+                fontstring = 'NotoSans-Regular'
+            selfclass._font = selfclass._fontmanager.getfont(fontstring)
+        return selfclass._font
+        
 # added for Python 3 compatibility, 
 # define basestring so all the "isinstance(x,basestring)" functions will work.
 try:
@@ -212,7 +257,7 @@ UserCommand = collections.namedtuple('UserCommand','execute category helptext co
 UserCommand.__str__ = lambda x: ': {} "{} {}" {} ;'.format(x.command,x.category,x.helptext,' '.join(x.execute))
             
 #DrawParams = collections.namedtuple('DrawParams','thickness width height layer cpolyline zonepriority')
-DrawParams = collections.namedtuple('DrawParams','t w h l zt zp')
+# DrawParams = collections.namedtuple('DrawParams','t w h l zt zp')
 # param Usage:
 # 0.3,1,1 mm F.Cu,NO_HATCH,0 split append t,w,h,l,zt,zp param
 # 0.3,1,1 mm t,w,h param
@@ -229,12 +274,13 @@ def decodestring(encoded_string):
     if sys.version_info >= (3,):
         return bytes(encoded_string, "utf-8").decode("unicode_escape") # python3 
     else:
-        return encoded_string.decode('string_escape') # python2
+        return encoded_string.decode('string_escape').encode('utf-8') # python2
 
-def SHOWPARAM(values,keys):
-    return _user_stacks['drawparams']
+# def GETPARAMS():
+    # return _user_stacks['Params'][-1]
     
-def PARAM(values,keys):
+def PARAM(values, keys):
+    # output('keys: {}\nvals: {}'.format(keys,values))
     if isinstance(values,basestring):
         values = values.split(',')
     keys = keys.split(',')
@@ -242,7 +288,7 @@ def PARAM(values,keys):
     if not hasattr(values,'__iter__'):
         values = [values]
     for k,v in zip(keys,values):
-        _user_stacks['drawparams'][k] = v
+        _user_stacks['Params'][-1][k] = v
 
 class gui(kicommand_gui.kicommand_panel):
     """Inherits from the form wxFormBuilder. Supplies
@@ -321,16 +367,18 @@ _command_definition = []
 
 _user_stacks = defaultdict(list)
 
-_user_stacks['drawparams'] = { 
+_user_stacks['Params'].append({ 
                                 't':0.3*pcbnew.IU_PER_MM,
                                 'w':1*pcbnew.IU_PER_MM,
                                 'h':1*pcbnew.IU_PER_MM,
                                 'l':pcbnew.Dwgs_User, 
                                 'zt':pcbnew.ZONE_CONTAINER.NO_HATCH,
                                 'zp':0
-                             }
+                             })
                              
 #_user_stacks['Board'].append(pcbnew.GetBoard())
+
+# 50,1 int getunicoderange stringtogeom TTranslate,mm,0,50,TScale,native,0.9,0.9,mm  split swap append newdrawing refresh
 
 def output(*args):
 
@@ -344,7 +392,7 @@ def output(*args):
         print()
     else:
         #text = w.outputbox.Value
-        tempstring = ' '.join(map(str,args))
+        tempstring = u' '.join(map(unicode,args)) # was "str" instead of "unicode"
         tempstring += '\n'
         if (len(tempstring)) > MAXTEXTBOXTEXT:
             tempstring = tempstring[int(max(0,len(tempstring)-MAXTEXTBOXTEXT)):]
@@ -354,7 +402,7 @@ def output(*args):
             w.outputbox.AppendText(tempstring)
     
 
-def kc(commandstring,returnval=0):
+def kc(commandstring,returnval=0,suspendStackNumPrint=False):
     """returnval -1 return entire stack, 0 return top, >0 return that number of elements from top of list as a list."""
 # Items beginning with single quote are entered onto the stack as a string (without the quote)
 # Items beginning with double quote swallow up elements until a word ends in a double quote,
@@ -400,13 +448,24 @@ def kc(commandstring,returnval=0):
             commandslist.extend(commandstring[qend:].split())
         # wx.MessageDialog(None,'{'+'}{'.join(commandslist)+'}').ShowModal()
         #print('{','}{'.join(commandslist),'}')
-        for command in commandslist:
-            
+        #for command in commandslist:
+        # converted to iterator so next() can be optionally executed in the handling of the loop syntax
+        commandlist = iter(commandslist)
+        try:
+            nextcommand = commandlist.next()
+        except:
+            nextcommand = None
+        while nextcommand is not None:
+            command = nextcommand
             if command == ';':
                 _compile_mode = False
                 comm = _command_definition[:1]
                 if not comm: # delete all commands in the user dictionary: ': ;'
                     _dictionary['user'] = {}
+                    try:
+                        nextcommand = commandlist.next()
+                    except:
+                        nextcommand = None
                     continue
                 comm = comm[0]
                 cdef = _command_definition[1:]
@@ -429,21 +488,64 @@ def kc(commandstring,returnval=0):
                 else: # delete a command in the user dictionary: ': COMMAND ;'
                     del(_dictionary['user'][_command_definition[0]])
                 _command_definition = []
+                try:
+                    nextcommand = commandlist.next()
+                except:
+                    nextcommand = None
                 continue
 
             if _compile_mode:
                 _command_definition.append(command)
+                try:
+                    nextcommand = commandlist.next()
+                except:
+                    nextcommand = None
+                # bypass further interpretation since we're just collecting words for defining commands
                 continue
-            
+
+            if command.startswith('?') and len(command)>1:
+                # Either a loop or a conditional
+                #print('loop or cond')
+                if not _stack.pop():
+                    # Here, we've failed the conditional, so we reset the nextcommand and continue
+                    # this works for the plain conditional or the loop command
+                    #print('next! (a)')
+                    try:
+                        nextcommand = commandlist.next()
+                    except:
+                        nextcommand = None
+                    continue
+                # At this point, the condition is true
+                
+                if command[1] == '?': # this is a loop command
+                    print('loop')
+                    # replace the ??command with ?command
+                    # but later, don't change nextcommand and it will continue to be the looped command
+                    command = command[1:]
+                else:
+                    #print('next! (b)')
+                    try:
+                        nextcommand = commandlist.next()
+                    except:
+                        nextcommand = None
+                
+                # here we've reduced the loop command to the conditional command.
+                # and the conditional is true, and we've already handled nextcommand if needed.
+                command = command[1:]
+                        
+            else:
+                #print('next! (c)')
+                try:
+                    nextcommand = commandlist.next()
+                except:
+                    nextcommand = None
+
+            # after here, we don't have to update nextcommand again. The purpose of nextcommand is to handle loops just above
+
             if command.startswith("'"):
                 _stack.append(command[1:])
                 continue
-            if command.startswith("?") and len(command)>1:
-                if _stack.pop():
-                    command = command[1:]
-                else:
-                    continue
-                
+
             found = False
             #output('Dictionaries')
             for dictname in ('user','persist','command'):
@@ -466,16 +568,16 @@ def kc(commandstring,returnval=0):
                         _stack.append(result)
                 elif isinstance(commandToExecute,UserCommand):
                     #output('%s is UserCommand'%command)
-                    kc(' '.join(commandToExecute.execute))
+                    kc(' '.join(commandToExecute.execute),suspendStackNumPrint=True)
                 elif isinstance(commandToExecute,basestring):
                     #output('%s is commandstring'%command)
-                    kc(commandToExecute)
+                    kc(commandToExecute,suspendStackNumPrint=True)
                 found = True
                 break
             if not found:
                 _stack.append(command)
             
-        if len(_stack):
+        if len(_stack) and not suspendStackNumPrint:
             output( len(_stack), 'operands left on the stack.' )
         try:
             pcbnew.UpdateUserInterface()
@@ -611,6 +713,11 @@ def STACK():
 def PRINT():
     """print the top of the stack"""
     output(_stack[-1])
+
+import pprint        
+def PPRINT():
+    """pretty print the top of the stack"""
+    output(pprint.pformat(_stack[-1]))
         
 def CLEAR():
     global _stack
@@ -637,7 +744,7 @@ def tosegments(*c):
             try:
                 width = t.GetWidth()
             except:
-                width = _user_stacks['drawparams']['t']
+                width = _user_stacks['Params'][-1]['t']
             if not isinstance(s,pcbnew.wxPoint):
                 s = pcbnew.wxPoint(*s)
             if not isinstance(e,pcbnew.wxPoint):
@@ -846,7 +953,7 @@ def SCALE(dseglist,factor):
     xsum, ysum = sum(x[0] for x in xs), sum(y[1] for y in ys)
     center = pcbnew.wxPoint(xsum/num,ysum/num)
     
-    output('Center: %s'%(center))
+    #output('Center: %s'%(center))
     for seg in dseglist:
         for gp,sp in ((seg.GetStart,seg.SetStart),(seg.GetEnd,seg.SetEnd)):
             p = gp()
@@ -1262,7 +1369,7 @@ def order_segments_old(dseglist):
     ordered = []
     
     while segs_by_point[currentpoint]:
-        output( "currentpoint = ",currentpoint)
+        #output( "currentpoint = ",currentpoint)
         currentseg = list(segs_by_point[currentpoint])[0] # get one element in the set
         #(currentseg,) = segs_by_point[currentpoint] # get the one element in the set
         #output( 'currentset = ',currentseg)
@@ -2180,7 +2287,7 @@ def DRAWPARAMS(dims,layer):
 
     layerID = getLayerID(layer)
 
-    _user_stacks['drawparams'] = [t,w,h,layerID]
+    _user_stacks['Params'][-1].update({'t':t,'w':w,'h':h,'l':layer})
 
 def list_to_paired_list(input):
     a = iter(input)
@@ -2217,135 +2324,290 @@ def convert_to_points(input):
     # output( 'ctp3: ',input)
     # return input
 
-def streamgeom(inputiterable):
-    # Argtype
-    # p - point, converted by units
-    # P - point, converted by units, followed by all points
-    # n - number, converted by units
-    # N - number, not converted by units
-    # s - string
-    # S - string followed by all strings
+# proposed binary geom:
+# from enum import Enum
+# class BG_TYPE(Enum):
+    # polygon = 1
+    # hole = 2
+    # line = 3
 
-    argdict = {
-        'Line':'pp'
-        ,'CircleC':'pn'
-        ,'CircleR':'ppn'
-        ,'CircleO':'ppp'
-        ,'CircleP':'pp'
-        ,'ArcC':'ppN'
-#        ,'ArcR':'ppn'
-        ,'ArcO':'ppp'
-#        ,'ArcP':'ppp'
-        ,'Polygon':'p'
-        ,'Polyline':'p'
-        ,'Bezier':'pppp'
-        ,'Layer':'s'
-        ,'Text':'pT'
-        ,'Point':'p'
-        ,'Thickness':'n'
-        ,'Dot':'n'
-        ,'Via':'s'
-        ,'Corner':'n'
-        ,'PolylineRounded':'nP'
-    }
-    unitconversion = {
-        'mm':pcbnew.IU_PER_MM
-        ,'mil':pcbnew.IU_PER_MILS
-        ,'mils':pcbnew.IU_PER_MILS
-        ,'native':1.0
-        ,'nm':1.0
-    }
-# Line,mm,20,10,22,12 split newdrawing refresh
-# ArcC,mm,20,10,22,12,90 split newdrawing refresh
-# ArcM,mm,22,12,20,12.8,18,12 split newdrawing refresh
-# CircleP,mm,-10,-10,5 split newdrawing refresh
-# Polygon,mm,30,0,30,1,25,1 split newdrawing refresh
-# Bezier,mm,30,0,30,1,25,1 split newdrawing refresh
+class binarygeom:
+    # for now, we'll support only a stream of 16-bit integers with the high bits indicating shape type
+    # we'll also presume that all polygons/holes are in the same DRAWSEGMENT polygon, to be subsequently fractured.
+    numtypebits = 4
+    type16mask = -1 << (16-numtypebits)
+    type8mask = -1 << (8-numtypebits)
+    def __init__(self):
+        self._binaryarray = None
+        self.next = self.__next__
+        pass
+    # def __iter__(self):
+        # iba = iter(self._binaryarray)
+        # for byte1 in iba:
+            # byte2 = iba.next()
+            # if byte1 & type8mask:
+                # # this is a new shape
+                # shape = byte1>>(8-numtypebits) & (numtypebits - 1)
+                # byte1 = byte1 & (8-numtypebits)-1
+        # # how do we differentiate between a shape and a point?
+        # # we'll abandon __iter__ until I figure this out
+    # def __next__(self):
+        # pass
+    def getdrawsegment(layer=None,width=None):
+        ds = pcbnew.DRAWSEGMENT()
+        ds.SetShape(pcbnew.S_POLYGON)
+        if layer is not None:
+            ds.SetLayer(getLayerID(layer))
+        if width is not None:
+            ds.SetWidth(int(width))
 
-    iterstack = [iter(inputiterable)]
-    outlist = []
-    currentarg = None # argtypes.next()
-    argpending = []
-
-    lengthmultiplier = 1.0
-    while iterstack:
-        try:
-            val = iterstack[-1].next()
-        except:
-            iterstack.pop()
-            continue
-        #output('processing {}'.format(val))
-        # output('VAL = {}'.format(val))
-        if currentarg == 'T':
-            if val == 'EndText':
-                currentarg = None
-                if outlist:
-                    yield outlist
-                    del outlist[:]
-            else:
-                outlist.append(val)
-            continue
-            
-        argtype = isinstance(val, collections.Hashable)
-        if argtype:
-            argtype = argdict.get(val,False)
-            currentmult = unitconversion.get(val,None)
-            if currentmult is not None:
-                # output('Found unit {}'.format(val))
-                lengthmultiplier = currentmult
-                continue
-            if argtype:
-                if outlist:
-                    yield outlist
-                    del outlist[:]
-                # output("Found {}".format(val))
-                argiter = itertools.cycle(argtype)
-                currentarg = argiter.next()
-
-                outlist.append(val)
-                continue
-        #currentarg = argiter.next()
-        if currentarg == 'P':
-            argiter = itertools.cycle('p')
-            currentarg = argiter.next()
-        if isinstance(val,pcbnew.wxPoint):
-            if currentarg != 'p':
-                raise TypeError('{} expected, got {}'.format(currentarg,type(val)))
-            outlist.append(val)
-            currentarg = argiter.next()
-            continue
-        if isiter(val):
-            iterstack.append(iter(val))
-            continue
-        if currentarg == 's':
-            outlist.append(str(val))
-            continue
-        if currentarg == 'S':
-            outlist.append(str(val))
-            argiter = itertools.cycle('s')
-            currentarg = argiter.next()
-            continue
-        if isinstance(val,basestring):
-                val = float(val)
+        #xxx
+        iba = iter(self._binaryarray)
+        for byte1 in iba:
+            byte2 = iba.next()
+            if byte1 & type8mask:
+                # this is a new shape
+                shape = byte1>>(8-numtypebits) & (numtypebits - 1)
+                byte1 = byte1 & (8-numtypebits)-1
                 
-        if isinstance(val,(float,int)):
-            if currentarg == 'N':
-                outlist.append(val)
+        
+class streamgeom:
+    def __init__(self):
+        self._transformstack = []
+    def streamgeom(self,inputiterable):
+        # Argtype
+        # p - point, converted by units
+        # P - point, converted by units, followed by all points
+        # n - number, converted by units
+        # N - number, not converted by units
+        # s - string
+        # S - string followed by all strings
+        if len(self._transformstack) == 0:
+            self._transformstack.append(matrixTransform2d())
+        
+        argdict = {
+            'Group':' '
+            ,'Line':'pp'
+            ,'CircleC':'pn'
+            ,'CircleR':'ppn'
+            ,'CircleO':'ppp'
+            ,'CircleP':'pp'
+            ,'ArcC':'ppN'
+    #        ,'ArcR':'ppn'
+            ,'ArcO':'ppp'
+    #        ,'ArcP':'ppp'
+            ,'Polygon':'p'
+            ,'Polygon.':'p' # continuation polygon. Must be preceded by a polygon. Will be put into the prior DRAWSEGMENT S_POLYGON
+            ,'Hole':'p'
+            ,'Polyline':'p'
+            ,'Bezier':'pppp'
+            ,'Layer':'s'
+            ,'Text':'pT'
+            ,'Point':'p'
+            ,'Position':'f'
+            ,'PositionMM':'f'
+            ,'PositionMils':'f'
+            ,'PositionMil':'f'
+            ,'Thickness':'n'
+            ,'Dot':'n'
+            ,'Via':'s'
+            ,'Corner':'n'
+            ,'PolylineRounded':'nP'
+            ,'TMatrix':'nnnnnnnnn'
+            ,'TTranslate':'f'
+            ,'TScale':'NN'
+            ,'TShear':'f'
+            ,'TRotate':'N'
+            ,'S':'N'
+            ,'Sy':'N'
+            ,'+T':'f'
+            ,'R':'N'
+            ,'Z':'f'
+            ,'Sx':'N'
+            ,'S':'N'
+            ,'T+':' '
+            ,'T':'NN'
+            ,'Tmm':'NN'
+            ,'Tmil':'NN'
+            ,'Tmils':'NN'
+            ,'T-':' '
+            ,'mm':' '
+            ,'mil':' '
+            ,'mils':' '
+        }
+        transformation={
+            # 'TMatrix':lambda params,o:        self._transformstack[-1].assign(*params[0])
+            # ,'TTranslate':lambda params,o:    self._transformstack[-1].translate(*tuple(params[0]))
+            # ,'TScale':lambda params,o:        self._transformstack[-1].scale(params,origin=o)
+            # ,'TShear':lambda params,o:        self._transformstack[-1].shear(*params[0],origin=o)
+            # ,'TRotate':lambda params,o:       self._transformstack[-1].rotate(*params[0],origin=o)
+            # ,'mm':lambda params,o:       self._transformstack[-1].scale((pcbnew.IU_PER_MM,pcbnew.IU_PER_MM),origin=o)
+            # ,'mil':lambda params,o:       self._transformstack[-1].scale((pcbnew.IU_PER_MILS,pcbnew.IU_PER_MILS),origin=o)
+            # ,'mils':lambda params,o:       self._transformstack[-1].scale((pcbnew.IU_PER_MILS,pcbnew.IU_PER_MILS),origin=o)
+            'S':lambda params:       self._transformstack[-1].scale((params[0],params[0]),pre=True)#,origin=self._transformstack[-1].transform((0,0)))
+            ,'Sy':lambda params:       self._transformstack[-1].scale((1,params[0]),pre=True)#,origin=self._transformstack[-1].transform((0,0)))
+            ,'+T':lambda params:    self._transformstack[-1].translate(*params[0],pre=True)
+            # ,'T':lambda params:    self._transformstack[-1].translate(*self._transformstack[-1].transform(params[0]),origin=self._transformstack[-1].transform((0,0)))
+            ,'R':lambda params:    self._transformstack[-1].rotate(params[0],pre=True)#,origin=self._transformstack[-1].transform((0,0)))
+            ,'Z':lambda params:    self._transformstack[-1].shear(*params[0])#,origin=self._transformstack[-1].transform((0,0)))
+            ,'T+':lambda params:    self._transformstack.append(self._transformstack[-1].copyTransform())
+            ,'T-':lambda params:    self._transformstack.pop()
+            ,'T':lambda params:    self._transformstack[-1].translate(*params,pre=False)
+            ,'Tmm':lambda params:   self._transformstack[-1].translate(params[0]*pcbnew.IU_PER_MM,params[1]*pcbnew.IU_PER_MM,pre=False)
+            ,'Tmil':lambda params:   self._transformstack[-1].translate(params[0]*pcbnew.IU_PER_MILS,params[1]*pcbnew.IU_PER_MILS,pre=False)
+            ,'Tmils':lambda params:   self._transformstack[-1].translate(params[0]*pcbnew.IU_PER_MILS,params[1]*pcbnew.IU_PER_MILS,pre=False)
+
+            # 
+            # elif geom[0].startswith('Position'):
+                # if geom[0].tolower().endswith('mm'):
+                # if geom[0].tolower().endswith('mil') or geom[0].tolower().endswith('mils'):
+
+    #        params=((x,y),)
+        #Ts, Tt, Tr, Tz, T1 (one)= identity? 
+        # Or even just S, T, R, Z? They could be extended to Sx, Sy, Tx, Ty, Zx, and Zy if you only want to specify x or y transform. 
+        }
+        # Transform,Type(S),N...
+        # Transform,Matrix,n11,n21,n31,n12,n22,n32,n13,n23,n33 assigs the given n[col][row] numbers to the transformation matrix (first row is n11,n21,n31)
+        # Transform,Translate,x,y - moves the coordinate frame
+        # Transform,Scale,x,y     - scales the coordinate frame relative to the current point
+        # Transform,Rotate,d      - rotates the coordinate frame around the current point by d degrees
+        # Transform,Shear,x,y     - shears the coordinate frame relative to the current point
+
+        unitconversion = {
+            'mm':pcbnew.IU_PER_MM
+            ,'mil':pcbnew.IU_PER_MILS
+            ,'mils':pcbnew.IU_PER_MILS
+            ,'native':1.0
+            ,'nm':1.0
+        }
+    # Line,mm,20,10,22,12 split newdrawing refresh
+    # ArcC,mm,20,10,22,12,90 split newdrawing refresh
+    # ArcM,mm,22,12,20,12.8,18,12 split newdrawing refresh
+    # CircleP,mm,-10,-10,5 split newdrawing refresh
+    # Polygon,mm,30,0,30,1,25,1 split newdrawing refresh
+    # Bezier,mm,30,0,30,1,25,1 split newdrawing refresh
+
+        iterstack = [iter(inputiterable)]
+        outlist = []
+        currentarg = None # argtypes.next()
+        argpending = []
+
+        lengthmultiplier = 1.0
+        while iterstack:
+            try:
+                val = iterstack[-1].next()
+            except:
+                iterstack.pop()
+                continue
+            # if not isiter(val):
+                #output('processing {}'.format(val))
+            # output('VAL = {}'.format(val))
+            if currentarg == 'T':
+                if val == 'EndText':
+                    currentarg = None
+                    if outlist:
+                        yield outlist
+                        del outlist[:]
+                else:
+                    outlist.append(val)
+                continue
+                
+            # output('Item: {}'.format(val))
+            #  Polygon,mm,0,0,10,0,10,10,0,10
+            argtype = isinstance(val, collections.Hashable)
+            if argtype:
+                argtype = argdict.get(val,False)
+                currentmult = unitconversion.get(val,None)
+                if currentmult is not None:
+                    # output('Found unit {}'.format(val))
+                    self._transformstack[-1].scale((currentmult,currentmult))
+                    onezero = self._transformstack[-1].transform((1,0))
+                    lengthmultiplier = math.sqrt(onezero[0]*onezero[0]+onezero[1]*onezero[1])
+                    continue
+                if argtype:
+                    if outlist:
+                        texec = transformation.get(outlist[0],None)
+                        if texec:
+                            # output("Transform origin right before output yield")
+                            #output('{}'.format(','.join(map(str,outlist))))
+                            # output("Transforming origin point with {}".format(outlist))
+                            #output("texec arg 0 = {}".format(outlist[1:]))
+                            texec(outlist[1:])
+                            # currentarg = argiter.next()
+                            # output('currentarg {}'.format(currentarg))
+                        else:
+                            yield outlist
+                        del outlist[:]
+                    # output("Found {}".format(val))
+                    
+                    argiter = itertools.cycle(argtype)
+                    currentarg = argiter.next()
+                    
+                    
+                    
+
+                    outlist.append(val)
+                    continue
+            #currentarg = argiter.next()
+            if currentarg == 'P':
+                argiter = itertools.cycle('p')
+                currentarg = argiter.next()
+            if isinstance(val,pcbnew.wxPoint):
+                if currentarg not in 'pf':
+                    raise TypeError('{} expected, got {}'.format(currentarg,type(val)))
+    #            outlist.append(pcbnew.wxPoint(*self._transformstack[-1].transform(val)))
+                if currentarg == 'p':
+                    # output("Transform existing point right before output append")
+                    outlist.append(pcbnew.wxPoint(*self._transformstack[-1].transform(val)))
+                else:
+                    outlist.append(val)
+                    
                 currentarg = argiter.next()
                 continue
-            if currentarg == 'n':
-                outlist.append(val*lengthmultiplier)
+            if isiter(val):
+                iterstack.append(iter(val))
+                continue
+            if currentarg == 's':
+                outlist.append(str(val))
+                continue
+            if currentarg == 'S':
+                outlist.append(str(val))
+                argiter = itertools.cycle('s')
                 currentarg = argiter.next()
                 continue
-            else:
-                argpending.append(val*lengthmultiplier)
-                if currentarg == "p" and len(argpending) == 2:
-                    outlist.append(pcbnew.wxPoint(*argpending))
-                    del argpending[:]
+            if isinstance(val,basestring):
+                    val = float(val)
+                    
+            if isinstance(val,(float,int)):
+                if currentarg == 'N':
+                    outlist.append(val)
                     currentarg = argiter.next()
                     continue
-    if outlist:
-        yield outlist    
+                if currentarg == 'n':
+                    outlist.append(val*lengthmultiplier)
+                    currentarg = argiter.next()
+                    continue
+                else:
+                    argpending.append(val*lengthmultiplier)
+                        
+                    if currentarg in "pf" and len(argpending) == 2:
+                        if currentarg == 'f':
+                            #output("Not transforming point before assembling from argpending from {}".format(argpending))
+                            #outlist.append(tuple(argpending))
+                            outlist.append(pcbnew.wxPoint(*argpending))
+                        else:
+                            # output("Transform point right before assembling from argpending from {}".format(argpending))
+                            outlist.append(pcbnew.wxPoint(*self._transformstack[-1].transform(argpending)))
+                            # output("to {}".format(outlist[-1]))
+                        del argpending[:]
+                        currentarg = argiter.next()
+                        continue
+        if outlist:
+            yield outlist
+# TTranslate,mm,0,110 split ab\ncd stringtogeom append newdrawing refresh
+# Point,0,0,Dot,mm,1,TTranslate,mm,0,10,Point,0,0,Dot,2,TTranslate,mm,0,10,Point,0,0,Dot,3 split newdrawing refresh
+# Point,0,0,TTranslate,mm,0,0,TScale,native,3.5,3.5,mm,Polygon,-5,-5,5,-5,5,5,-5,5  split newdrawing refresh
+# Point,0,0,Dot,100000,S,2,T,0,1000000,Point,0,0,Dot,2000000,T,0,10000000,Point,0,0,Dot,3000000 split newdrawing refresh
 
 def listtoargs(argtypestring, inlist):
     # Convert an inlist into an outlist based on argtypes.
@@ -2550,15 +2812,15 @@ def centerFromPointsAndRadius(a,b,r):
 def centerFromPoints_old(a,b,c):
     denominator = [[2*a[0], 2*a[1], 2],[2*b[0],2*b[1],2],[2*c[0],2*c[1],2]]
     denominator = getMatrixInverse(denominator)
-    output('Denom={}'.format(denominator))
+    #output('Denom={}'.format(denominator))
     h = [
             [a[0]*a[0]+a[1]*a[1], a[1], 1],
             [b[0]*b[0]+b[1]*b[1], b[1], 1],
             [c[0]*c[0]+c[1]*c[1], c[1], 1]
         ]
-    output('H before mult={}'.format(h))
+    #output('H before mult={}'.format(h))
     h = getMatrixMultiply(h,denominator)
-    output('H after  mult={}'.format(h))
+    #output('H after  mult={}'.format(h))
     k = [
             [a[0], a[0]*a[0]+a[1]*a[1], 1],
             [b[0], b[0]*b[0]+b[1]*b[1], 1],
@@ -2568,121 +2830,605 @@ def centerFromPoints_old(a,b,c):
     # r = sqrt[(a[0]-h)^2+(a[1]-k)^2]
     return (h,k)#,r)
     
-# from https://codereview.stackexchange.com/a/28565
-COMMANDS = set('MmZzLlHhVvCcSsQqTtAa')
-COMMAND_RE = re.compile("([MmZzLlHhVvCcSsQqTtAa])")
-FLOAT_RE = re.compile("[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
-
-def _tokenize_path(pathdef):
-    for x in COMMAND_RE.split(pathdef):
-        if x in COMMANDS:
-            yield x
-        for token in FLOAT_RE.findall(x):
-            yield token
             
-# converted from https://stackoverflow.com/a/3162732
-def beziercubic(qp0,qp1,qp2):
-
-    cp0 = qp0[0],qp0[1]
-    cp3 = qp2[0],qp2[1]
-
-    # The two control points for the cubic are:
-
-    cp1 = qp0[0] + 2.0/3 *(qp1[0]-qp0[0]),qp0[1] + 2.0/3 *(qp1[1]-qp0[1])
-    cp2 = qp2[0] + 2.0/3 *(qp1[0]-qp2[0]),qp2[1] + 2.0/3 *(qp1[1]-qp2[1])
-    # cp0 = qp0
-    # cp3 = qp2
-
-    # # The two control points for the cubic are:
-
-    # cp1 = qp0 + 2.0/3 *(qp1-qp0)
-    # cp2 = qp2 + 2.0/3 *(qp1-qp2)
-
-    return cp0,cp1,cp2,cp3
-    
-# converted from https://mortoray.com/2017/02/16/rendering-an-svg-elliptical-arc-as-bezier-curves/
-def bezierfromellipticalarc():
-    # /**
-        # Perform the endpoint to center arc parameter conversion as detailed in the SVG 1.1 spec.
-        # F.6.5 Conversion from endpoint to center parameterization
-
-        # @param r must be a ref in case it needs to be scaled up, as per the SVG spec
-    # */
-    # internal static void EndpointToCenterArcParams( float2 p1, float2 p2, ref float2 r_, float xAngle, 
-        # bool flagA, bool flagS, out float2 c, out float2 angles )
-    # {
-        # double rX = Math.Abs(r_.X);
-        # double rY = Math.Abs(r_.Y);
-
-        # //(F.6.5.1)
-        # double dx2 = (p1.X - p2.X) / 2.0;
-        # double dy2 = (p1.Y - p2.Y) / 2.0;
-        # double x1p = Math.Cos(xAngle)*dx2 + Math.Sin(xAngle)*dy2;
-        # double y1p = -Math.Sin(xAngle)*dx2 + Math.Cos(xAngle)*dy2;
-
-        # //(F.6.5.2)
-        # double rxs = rX * rX;
-        # double rys = rY * rY;
-        # double x1ps = x1p * x1p;
-        # double y1ps = y1p * y1p;
-        # // check if the radius is too small `pq < 0`, when `dq > rxs * rys` (see below)
-        # // cr is the ratio (dq : rxs * rys) 
-        # double cr = x1ps/rxs + y1ps/rys;
-        # if (cr > 1) {
-            # //scale up rX,rY equally so cr == 1
-            # var s = Math.Sqrt(cr);
-            # rX = s * rX;
-            # rY = s * rY;
-            # rxs = rX * rX;
-            # rys = rY * rY;
-        # }
-        # double dq = (rxs * y1ps + rys * x1ps);
-        # double pq = (rxs*rys - dq) / dq;
-        # double q = Math.Sqrt( Math.Max(0,pq) ); //use Max to account for float precision
-        # if (flagA == flagS)
-            # q = -q;
-        # double cxp = q * rX * y1p / rY;
-        # double cyp = - q * rY * x1p / rX;
-
-        # //(F.6.5.3)
-        # double cx = Math.Cos(xAngle)*cxp - Math.Sin(xAngle)*cyp + (p1.X + p2.X)/2;
-        # double cy = Math.Sin(xAngle)*cxp + Math.Cos(xAngle)*cyp + (p1.Y + p2.Y)/2;
-
-        # //(F.6.5.5)
-        # double theta = svgAngle( 1,0, (x1p-cxp) / rX, (y1p - cyp)/rY );
-        # //(F.6.5.6)
-        # double delta = svgAngle(
-            # (x1p - cxp)/rX, (y1p - cyp)/rY,
-            # (-x1p - cxp)/rX, (-y1p-cyp)/rY);
-        # delta = Math.Mod(delta, Math.PIf * 2 );
-        # if (!flagS)
-            # delta -= 2 * Math.PIf;
-
-        # r_ = float2((float)rX,(float)rY);
-        # c = float2((float)cx,(float)cy);
-        # angles = float2((float)theta, (float)delta);
-    # }
-
-    # static float svgAngle( double ux, double uy, double vx, double vy )
-    # {
-        # var u = float2((float)ux, (float)uy);
-        # var v = float2((float)vx, (float)vy);
-        # //(F.6.5.4)
-        # var dot = Vector.Dot(u,v);
-        # var len = Vector.Length(u) * Vector.Length(v);
-        # var ang = Math.Acos( Math.Clamp(dot / len,-1,1) ); //floating point precision, slightly over values appear
-        # if ( (u.X*v.Y - u.Y*v.X) < 0)
-            # ang = -ang;
-        # return ang;
-    # }
-    pass
 
 def reflected_point(point,around):
     return 2*around[0]-point[0],2*around[1]-point[1]
 
+def arctopoints(center,start,angle,arcerror = 0.1,arcunits=2500):
+    'maxerror as a percentage (0.0-1.0) of radius'
+    # If an arc has sweep angle a, radius r, then the greatest distance between the chord with the same endpoints and the arc is r*(1-cos(a/2). If you subdivide this arc by putting n equally spaced points along it, then the maximum distance between the arc and the segmented line will be r*(1-cos(a/(2*(n+1)))).
+
+    # So if you want to keep the greatest distance below E, say, then you could put n new points along the arc, with n chosen so that n+1 >= a/(2*acos(1 - E/r))
+    r = wxPointUtil.distance(center,start)
+    maxerror = max(arcerror/r,arcunits)
+    if _user_stacks['Params'][-1].get('debug',None):
+        output('maxerror = max(arcerror/r,arcunits) = {}/{},{} = {}'.format(arcerror,r,arcunits,maxerror))
+    nmin = int(angle/(2*math.acos(1-maxerror)))+1 # (=nmin+1) # was maxerror/r
+    startvector = (start[0] - center[0],start[1] - center[1])
+    startangledeg = math.atan2(float(startvector[1]),startvector[0])*180/math.pi
+    endangledeg = startangledeg + angle
+    
+    xy = wxPointUtil.toxy(r,(theta+startangledeg)*math.pi/180)
+    return [(xy[0]+center[0],xy[1]+center[1]) for theta in itertools.starmap(operator.mul,itertools.izip(xrange(0,nmin+1),itertools.cycle((float(angle)/nmin,))))]
+
+
+# public class Bezier
+# {
+    # public PointF P1;   // Begin Point
+    # public PointF P2;   // Control Point
+    # public PointF P3;   // Control Point
+    # public PointF P4;   // End Point
+
+    # // Made these global so I could diagram the top solution
+    # public Line L12;
+    # public Line L23;
+    # public Line L34;
+
+    # public PointF P12;
+    # public PointF P23;
+    # public PointF P34;
+
+    # public Line L1223;
+    # public Line L2334;
+
+    # public PointF P123;
+    # public PointF P234;
+
+    # public Line L123234;
+    # public PointF P1234;
+
+    # public Bezier(PointF p1, PointF p2, PointF p3, PointF p4)
+    # {
+        # P1 = p1; P2 = p2; P3 = p3; P4 = p4;
+    # }
+
+     # # <summary>
+     # # Consider the classic Casteljau diagram
+     # # with the bezier points p1, p2, p3, p4 and lines l12, l23, l34
+     # # and their midpoint of line l12 being p12 ...
+     # # and the line between p12 p23 being L1223
+     # # and the midpoint of line L1223 being P1223 ...
+     # # </summary>
+     # # <param name="lines"></param>
+    # def SplitBezier(p1,p2,p3,p4):
+        # L12 = new Line(this.P1, this.P2);
+        # L23 = new Line(this.P2, this.P3);
+        # L34 = new Line(this.P3, this.P4);
+
+        # P12 = L12.MidPoint();
+        # P23 = L23.MidPoint();
+        # P34 = L34.MidPoint();
+
+        # L1223 = new Line(P12, P23);
+        # L2334 = new Line(P23, P34);
+
+        # P123 = L1223.MidPoint();
+        # P234 = L2334.MidPoint();
+
+        # L123234 = new Line(P123, P234);
+
+        # P1234 = L123234.MidPoint();
+
+        # # Check if points P1, P1234 and P2 are colinear (enough).
+        # # This is very simple-minded algo... there are better...
+        # float t1 = (P2.Y - P1.Y) * (P3.X - P2.X);
+        # float t2 = (P3.Y - P2.Y) * (P2.X - P1.X);
+
+        # float delta = Math.Abs(t1 - t2);
+
+        # if delta < 0.1; // Hard-coded constant
+            # return
+        # else:
+            # Bezier bz1 = new Bezier(this.P1, P12, P123, P1234);
+            # bz1.SplitBezier(lines);
+
+            # Bezier bz2 = new Bezier(P1234, P234, P34, this.P4);
+            # bz2.SplitBezier(lines);
+        # return;
+    # }
+
+
+
+def _B(coorArr, i, j, t):
+    if j == 0:
+        return coorArr[i]
+    return _B(coorArr, i, j - 1, t) * (1 - t) + _B(coorArr, i + 1, j - 1, t) * t
+
+def beziertopoints(start,c1,c2,end,steps=5):
+    # steps = 30
+    # n = random.randint(3, 6) # number of control points
+    # coorArrX = []
+    # coorArrY = []
+    # for k in range(n):
+        # x = random.randint(0, imgx - 1)
+        # y = random.randint(0, imgy - 1)
+        # coorArrX.append(x)
+        # coorArrY.append(y)
+
+    (coorArrX,coorArrY) = zip(start,c1,c2,end)
+    n = 4 # number of points (start+control+end)
+    
+    points=[]
+    # plot the curve
+    numSteps = steps
+    for k in range(numSteps):
+        t = float(k) / (numSteps - 1)
+        x = int(_B(coorArrX, 0, n - 1, t))
+        y = int(_B(coorArrY, 0, n - 1, t))
+        try:
+            points.append((x,y))
+        except:
+            pass    
+    return points
+
+# TTF font winding, inside/outside, etc.
+
+# http://twardoch.github.io/test-fonts/varia/160413-EvenOddTT/
+# Also, "For simple glyphs, you should set bit 6 of the first Outline Flag byte to 1 if the unhinted glyph outline has overlapping contours or if variation controls or hinting controls can ever cause any of the contours to overlap. Otherwise this bit should be set to 0."
+
+def IsWindingCW(points):
+    # output('finding winding with {} points'.format(len(points)))
+    startpoints = iter(points)
+    endpoints = itertools.islice(points,1,None)
+    result = sum(itertools.starmap(lambda s,e: (e[0] - s[0])*(e[1] + s[1]),itertools.izip(startpoints,endpoints)))
+    return (result > 0)
+    
+    
+# from https://en.wikipedia.org/wiki/Even%E2%80%93odd_rule    
+# Using Even-Odd rule 
+
+# Tutorial: https://www.wikiwand.com/en/Point_in_polygon (no code or math)
+
+# https://stackoverflow.com/a/47027051 (a conclusion, but not sure if it applies in all cases
+# https://groups.google.com/d/msg/comp.fonts/v8jAqZ0uris/tXqbzCZ-4J8J Apple Fonts Guy
+
+def is_point_in_path(x, y, poly): # -> bool:
+    """Determine if the point is in the path.
+
+    Args:
+      x -- The x coordinates of point.
+      y -- The y coordinates of point.
+      poly -- a list of tuples [(x, y), (x, y), ...]
+
+    Returns:
+      True if the point is in the path.
+    """
+    num = len(poly)
+    i = 0
+    j = num - 1
+    c = False
+    for i in range(num):
+        if ((poly[i][1] > y) != (poly[j][1] > y)) and \
+                (x < poly[i][0] + (poly[j][0] - poly[i][0]) * (y - poly[i][1]) /
+                                  (poly[j][1] - poly[i][1])):
+            c = not c
+        j = i
+    return c
+
 # would also be nice to handle projection
 # https://www.cis.rit.edu/class/simg782/lectures/lecture_02/lec782_05_02.pdf
 
+
+# Noto-sans-cjk-jp-regular setfont \u0030 stringtogeom Tmm,216,-5 split swap append newdrawing refresh
+
+# Noto-sans-cjk-jp-regular setfont 250 getunicoderows stringtogeom newdrawing refresh
+# 280 getunicoderows stringtogeom newdrawing refresh
+# Noto-sans-cjk-jp-regular setfont \u24DE stringtogeom newdrawing refresh
+# Noto-sans-cjk-jp-regular setfont \u24C6 stringtogeom newdrawing refresh
+def getpolygonholes(polygonlist,debug=False):
+    debug=False
+    # here we implement a simple algorithm
+    # assume "solid right" that is 
+    # polygons are supposed to be CW and holes are supposed to be CCW, according to the spec.
+    # however, font files are not consistent.
+    # what appears to work is to use wn_PnPoly, which requires a CW polygon
+    # we determine winding so we can feed either the polygonlist or reversed to wn_PnPoly
+    
+    windings = [IsWindingCW(polygonlist[i]) for i in range(len(polygonlist))]
+    orderedlist = []
+    
+    # this is just a list that starts with
+    # "Polygon" and has "Polygon." thereafter.
+    pname = itertools.chain.from_iterable((('Polygon',),(itertools.cycle(('Polygon.',)))))
+    polys = []
+    holes = []
+    # for i in range(len(polygonlist)):
+        # if windings[i]:
+            # poly = polygonlist[i]
+        # else:
+            # poly = reversed(polygonlist[i])
+            
+            
+            
+    intest = wn_PnPoly
+    # intest = point_in_polygon.wn_PnPoly
+    childrenbyparent = defaultdict(list) #{-1:[]}
+
+    listlen = len(polygonlist)
+    # for p in range(listlen):
+        # if IsWindingCW(polygonlist[p]):
+            # print('CW  {}'.format(p))
+        # else:
+            # print('CCW {}'.format(p))
+            
+
+    # Keep track of how many polygons the indexed polygon is within.
+    incount = [0] * len(polygonlist)
+    # would this work? (seems to)
+    getcw = lambda i: windings[i] and polygonlist[i] or reversed(polygonlist[i])
+    for p in range(listlen):
+        for c in range(p+1,listlen):
+            # if windings[p]:
+                # ptest = polygonlist[p]
+            # else:
+                # ptest = reversed(polygonlist[p])
+            # if windings[c]:
+                # ctest = polygonlist[c]
+            # else:
+                # ctest = reversed(polygonlist[c])
+
+            # print('{} vs {}: cn_PnPoly = {}'.format(c,p,intest(polygonlist[c][0], tuple(polygonlist[p]))))
+            # print('{} vs {}: cn_PnPoly = {}'.format(p,c,intest(polygonlist[p][0], tuple(polygonlist[c]))))
+            if intest(polygonlist[c][0], getcw(p)) != 0:
+                # c is in p
+                #print(' {} in {}'.format(polygonlist[c][0], map(str,polygonlist[p])))
+                incount[c] += 1
+                #childrenbyparent[p].append(c)
+                #childrenbyparent[-1].append(p)
+            elif intest(polygonlist[p][0], getcw(c)) != 0:
+                incount[p] += 1
+                #print(' {} in {}'.format(polygonlist[p][0], map(str,polygonlist[c])))
+                #childrenbyparent[c].append(p)
+                #childrenbyparent[-1].append(c)
+            # else:
+                # childrenbyparent[-1].append(p)
+                # childrenbyparent[-1].append(c)
+
+        # for p,c in childrenbyparent.items():
+            # itertools.chain.from_iterable(
+            
+    pname = itertools.chain.from_iterable((('Polygon',),(itertools.cycle(('Polygon.',)))))
+    for i in range(len(polygonlist)):
+        if incount[i] % 2 == 0:
+            orderedlist.append((pname.next(),i))
+    for i in range(len(polygonlist)):
+        if incount[i] % 2 == 1:
+            orderedlist.append(('Hole',i))
+    if debug:
+        for i in range(len(polygonlist)):
+            output('{}: CW? {}; in: {}'.format(i,windings[i],incount[i]))
+    return orderedlist
+            
+    if debug:
+        for i in range(len(polygonlist)):
+            output('{}: CW? {}; in: {}'.format(i,windings[i],incount[i]))
+        output('brute force: {}'.format(childrenbyparent))
+        # Noto-sans-cjk-jp-regular setfont 280 getunicoderows stringtogeom newdrawing refresh
+        # Noto-sans-cjk-jp-regular setfont 'a stringtogeom print
+        # print('polylist: {}'.format(polygonlist))
+        # childrenbyparent.clear()
+    # At this point, childrenbyparent is flattened, and now we just make sure
+    # all nodes are in the structure.
+    toplevelparents = set(range(len(polygonlist)))
+    #toplevelparents.discard(p)
+    
+    for p,clist in childrenbyparent.items():
+        for c in clist:
+            toplevelparents.discard(c)
+    childrenbyparent[-1].extend(toplevelparents)
+    if debug:
+        output('brute force2: {}'.format(childrenbyparent))
+
+    currentparent = -1
+    # #output('# polygons = {}'.format(len(polygonlist)))
+    # found = False
+    # for inewpoly in range(len(polygonlist)):
+        # if debug:
+            # output('Checking polygon {}'.format(inewpoly))
+        # currentparent = -1
+        # while currentparent is not None:
+            # found = False
+            # ipparent = 0
+            # for pparent in childrenbyparent[currentparent]:
+                
+                # #output('is {} inside #{} ({})'.format(str(polygonlist[inewpoly][0]),pparent,polygonlist[pparent]))
+                # #output('is #{} inside #{}?'.format(inewpoly,pparent))
+                # #output('(point {} inside {}?)'.format(tuple(polygonlist[inewpoly][0]),map(tuple,polygonlist[pparent])))
+                # #output('intest returned {}'.format(intest(polygonlist[inewpoly][0], polygonlist[pparent])))
+                # if intest(polygonlist[inewpoly][0], tuple(polygonlist[pparent])) != 0:
+                    # # if inewpoly is within the current pparent, we want to continue to dive into
+                    # # geometries within the current pparent. We can ignore other geometries outside of
+                    # # the current pparent since a geometry can be within only one.
+                    # if debug:
+                        # print('inewpoly {} in {}'.format(inewpoly,pparent))
+                    # #output('yes')
+                    # # inewpoly is descendent of pparent, keep looking at further children 
+                    # currentparent = pparent
+                    # #output('ancestor of {} is {}'.format(inewpoly,currentparent))
+                    # found = True
+                    # break
+            # if not found:
+                # break
+        # if currentparent is not None:
+            # if debug:
+                # print('adding current {} to inewpoly {}'.format(currentparent,inewpoly))
+            # childrenbyparent[currentparent].append(inewpoly)
+    # # Now, if inewpoly is not within any other geometries, we want to check to see
+    # # which geometries might be within inewpoly. Only need to check the children of currentparent
+    # if not found:
+        # for pparent in list(childrenbyparent[currentparent]): # make a copy of the list in case we modify
+            # if pparent == inewpoly:
+                # continue
+            # if intest(polygonlist[pparent][0], polygonlist[inewpoly]) != 0:
+                # if debug:
+                    # print('point {} in inewpoly {}'.format(pparent,inewpoly))
+                # childrenbyparent[currentparent].remove(pparent)
+                # childrenbyparent[inewpoly].append(pparent)
+    # #output('childrenbyparent before: {}'.format(childrenbyparent))        
+    
+    # # Now all the children of -1 are polygons
+    # # their children are holes
+
+    # # Now go through the tree and convert grand children into top-level parents.
+    # currentparent = -1
+    # orderedlist = []
+    
+    # Now go through the tree and output with dependencies in order and with poly/hole identifier 
+    # go through all keys and move grand children to top level
+    # output('length of geom list = {}'.format(len(polygonlist)))
+    countbreak = 0
+    currentparentlist = True
+    while currentparentlist and countbreak < 1000:
+        currentparentlist = list(childrenbyparent[currentparent])
+        for parent in currentparentlist:
+            currentgrandchildren = []
+            for child in list(childrenbyparent[parent]):
+                childschildren = list(childrenbyparent[child])
+                
+                currentgrandchildren.extend(childschildren)
+                childrenbyparent.pop(child, None) # del childrenbyparent[gc]
+            childrenbyparent[-1].extend(list(currentgrandchildren))
+            currentparentlist = currentgrandchildren
+            countbreak += 1
+        # output('Grandchildren: {}'.format(grandchildren))        
+        # for grandchild in grandchildren:
+            # del childrenbyparent[grandchild]
+        # childrenbyparent[-1].extend(list(grandchildren))
+    if debug:
+        output('childrenbyparent after: {}'.format(childrenbyparent))        
+
+    # : rangeline "" getunicoderange 3 pull swap concat \n concat ; : nextrange ""  1 pull 2 pull 1 pick + int delist swap 1 pick list 1 pick append stack ; : r "Execute one unicode range into elements." nextrange rangeline ; clear -149 int 150 int "" r r r r r r r r r r r r r r r r r r r r  print stringtogeom Thickness,1,TTranslate,0,224000,TScale,1000,1000 split swap append newdrawing refresh
+    # parentwinding = [IsWindingCW(polygonlist[p]) for p in childrenbyparent[-1]]
+    # childwinding = [map(lambda c: IsWindingCW(polygonlist[c]),clist) for clist in [childrenbyparent[p] for p in childrenbyparent[-1]]]
+    # allchild = list(itertools.chain.from_iterable(childwinding))
+    # if (allchild and not all(allchild)) or any(parentwinding):
+        # output('Warning: \nParent winding {}\nChilds winding {}'.format(parentwinding,childwinding))
+    # now we have two levels. Parents are polygons and children are holes.
+    # iterable of the word 'Polygon' followed by 'Polygon.'
+
+    pname = itertools.chain.from_iterable((('Polygon',),(itertools.cycle(('Polygon.',)))))
+    for parent in childrenbyparent[-1]:
+        #polygonlist[parent].insert(0,'Polygon')
+        orderedlist.append((pname.next(),parent))
+        #orderedlist.append(polygonlist[parent])
+        #polygonlist[parent])
+        for child in childrenbyparent[parent]:
+            orderedlist.append(('Hole',child))
+            #polygonlist[child].insert(0,'Hole')
+            #orderedlist.append(polygonlist[child])
+
+    return orderedlist
+        
+            
+            
+            
+            
+# wn_PnPoly(polygonlist[c][0], tuple(polygonlist[p]))            
+        # almost:
+        # if IsWindingCW(polygonlist[i]):
+            # polys.append(i)
+        # else:
+            # holes.append(i)
+    for p in polys:
+        orderedlist.append((pname.next(),p))
+    for p in holes:
+        orderedlist.append(('Hole',p))
+    if holes and not polys:
+        #output('holes without polygons')
+        del orderedlist[:] # orderedlist.clear()
+        pname = itertools.chain.from_iterable((('Polygon',),(itertools.cycle(('Polygon.',)))))
+        for p in range(len(polygonlist)):
+            orderedlist.append((pname.next(),p))
+    return orderedlist
+def getpolygonholes_july(polygonlist,debug=False):
+    # here we implement a simple algorithm
+    # assume "solid right" that is 
+    # polygons are CW and holes are CCW
+    orderedlist = []
+    
+    # this is just a list that starts with
+    # "Polygon" and has "Polygon." thereafter.
+    pname = itertools.chain.from_iterable((('Polygon',),(itertools.cycle(('Polygon.',)))))
+    polys = []
+    holes = []
+    for i in range(len(polygonlist)):
+        if IsWindingCW(polygonlist[i]):
+            poly = polygonlist[i]
+        else:
+            poly = reversed(polygonlist[i])
+# wn_PnPoly(polygonlist[c][0], tuple(polygonlist[p]))            
+        # almost:
+        # if IsWindingCW(polygonlist[i]):
+            # polys.append(i)
+        # else:
+            # holes.append(i)
+    for p in polys:
+        orderedlist.append((pname.next(),p))
+    for p in holes:
+        orderedlist.append(('Hole',p))
+    if holes and not polys:
+        #output('holes without polygons')
+        del orderedlist[:] # orderedlist.clear()
+        pname = itertools.chain.from_iterable((('Polygon',),(itertools.cycle(('Polygon.',)))))
+        for p in range(len(polygonlist)):
+            orderedlist.append((pname.next(),p))
+    return orderedlist
+    # 280 getunicoderows stringtogeom newdrawing refresh
+def getpolygonholes_june(polygonlist,debug=False):
+    #debug = True
+    # childrenbyparent = {iparent1: [children]} # list of children indexed by parentindex. Index of -1 is list of top level nodes.
+    # using a Depth First Traversal, Preorder (Root, Children)
+    # find the first polygon that contains a random point of the current polygon
+    # childrenbyparent[firstfound].append(ipolygon) 
+    intest = wn_PnPoly
+    # intest = point_in_polygon.wn_PnPoly
+    childrenbyparent = defaultdict(list) #{-1:[]}
+    if debug:
+        listlen = len(polygonlist)
+        for p in range(listlen):
+            if IsWindingCW(polygonlist[p]):
+                print('CW  {}'.format(p))
+            else:
+                print('CCW {}'.format(p))
+        for p in range(listlen):
+            for c in range(p+1,listlen):
+                print('{} vs {}: cn_PnPoly = {}'.format(c,p,intest(polygonlist[c][0], tuple(polygonlist[p]))))
+                print('{} vs {}: cn_PnPoly = {}'.format(p,c,intest(polygonlist[p][0], tuple(polygonlist[c]))))
+                if intest(polygonlist[c][0], polygonlist[p]) != 0:
+                    # c is in p
+                    print(' {} in {}'.format(polygonlist[c][0], map(str,polygonlist[p])))
+                    childrenbyparent[p].append(c)
+                elif intest(polygonlist[p][0], polygonlist[c]) != 0:
+                    print(' {} in {}'.format(polygonlist[p][0], map(str,polygonlist[c])))
+                    childrenbyparent[c].append(p)
+
+        print('brute force: {}'.format(childrenbyparent))
+        print('polylist: {}'.format(polygonlist))
+        childrenbyparent.clear()
+    currentparent = -1
+    #output('# polygons = {}'.format(len(polygonlist)))
+    found = False
+    for inewpoly in range(len(polygonlist)):
+        if debug:
+            output('Checking polygon {}'.format(inewpoly))
+        currentparent = -1
+        while currentparent is not None:
+            found = False
+            ipparent = 0
+            for pparent in childrenbyparent[currentparent]:
+                
+                #output('is {} inside #{} ({})'.format(str(polygonlist[inewpoly][0]),pparent,polygonlist[pparent]))
+                #output('is #{} inside #{}?'.format(inewpoly,pparent))
+                #output('(point {} inside {}?)'.format(tuple(polygonlist[inewpoly][0]),map(tuple,polygonlist[pparent])))
+                #output('intest returned {}'.format(intest(polygonlist[inewpoly][0], polygonlist[pparent])))
+                if intest(polygonlist[inewpoly][0], tuple(polygonlist[pparent])) != 0:
+                    # if inewpoly is within the current pparent, we want to continue to dive into
+                    # geometries within the current pparent. We can ignore other geometries outside of
+                    # the current pparent since a geometry can be within only one.
+                    if debug:
+                        print('inewpoly {} in {}'.format(inewpoly,pparent))
+                    #output('yes')
+                    # inewpoly is descendent of pparent, keep looking at further children 
+                    currentparent = pparent
+                    #output('ancestor of {} is {}'.format(inewpoly,currentparent))
+                    found = True
+                    break
+            if not found:
+                break
+        if currentparent is not None:
+            if debug:
+                print('adding current {} to inewpoly {}'.format(currentparent,inewpoly))
+            childrenbyparent[currentparent].append(inewpoly)
+    # Now, if inewpoly is not within any other geometries, we want to check to see
+    # which geometries might be within inewpoly. Only need to check the children of currentparent
+    if not found:
+        for pparent in list(childrenbyparent[currentparent]): # make a copy of the list in case we modify
+            if pparent == inewpoly:
+                continue
+            if intest(polygonlist[pparent][0], polygonlist[inewpoly]) != 0:
+                if debug:
+                    print('point {} in inewpoly {}'.format(pparent,inewpoly))
+                childrenbyparent[currentparent].remove(pparent)
+                childrenbyparent[inewpoly].append(pparent)
+    #output('childrenbyparent before: {}'.format(childrenbyparent))        
+    
+    # Now all the children of -1 are polygons
+    # their children are holes
+
+    # Now go through the tree and convert grand children into top-level parents.
+    currentparent = -1
+    orderedlist = []
+    
+    # Now go through the tree and output with dependencies in order and with poly/hole identifier 
+    # go through all keys and move grand children to top level
+    # output('length of geom list = {}'.format(len(polygonlist)))
+    countbreak = 0
+    currentparentlist = True
+    while currentparentlist and countbreak < 1000:
+        currentparentlist = list(childrenbyparent[currentparent])
+        for parent in currentparentlist:
+            currentgrandchildren = []
+            for child in list(childrenbyparent[parent]):
+                childschildren = list(childrenbyparent[child])
+                
+                currentgrandchildren.extend(childschildren)
+                childrenbyparent.pop(child, None) # del childrenbyparent[gc]
+            childrenbyparent[-1].extend(list(currentgrandchildren))
+            currentparentlist = currentgrandchildren
+            countbreak += 1
+        # output('Grandchildren: {}'.format(grandchildren))        
+        # for grandchild in grandchildren:
+            # del childrenbyparent[grandchild]
+        # childrenbyparent[-1].extend(list(grandchildren))
+    if debug:
+        output('childrenbyparent after: {}'.format(childrenbyparent))        
+
+    # : rangeline "" getunicoderange 3 pull swap concat \n concat ; : nextrange ""  1 pull 2 pull 1 pick + int delist swap 1 pick list 1 pick append stack ; : r "Execute one unicode range into elements." nextrange rangeline ; clear -149 int 150 int "" r r r r r r r r r r r r r r r r r r r r  print stringtogeom Thickness,1,TTranslate,0,224000,TScale,1000,1000 split swap append newdrawing refresh
+    parentwinding = [IsWindingCW(polygonlist[p]) for p in childrenbyparent[-1]]
+    childwinding = [map(lambda c: IsWindingCW(polygonlist[c]),clist) for clist in [childrenbyparent[p] for p in childrenbyparent[-1]]]
+    allchild = list(itertools.chain.from_iterable(childwinding))
+    # if (allchild and not all(allchild)) or any(parentwinding):
+        # output('Warning: \nParent winding {}\nChilds winding {}'.format(parentwinding,childwinding))
+    # now we have two levels. Parents are polygons and children are holes.
+    # iterable of the word 'Polygon' followed by 'Polygon.'
+    pname = itertools.chain.from_iterable((('Polygon',),(itertools.cycle(('Polygon.',)))))
+    for parent in childrenbyparent[-1]:
+        #polygonlist[parent].insert(0,'Polygon')
+        orderedlist.append((pname.next(),parent))
+        #orderedlist.append(polygonlist[parent])
+        #polygonlist[parent])
+        for child in childrenbyparent[parent]:
+            orderedlist.append(('Hole',child))
+            #polygonlist[child].insert(0,'Hole')
+            #orderedlist.append(polygonlist[child])
+
+    return orderedlist
+
+# determine the ordering of non-intersecting polygons, then assign Hole to the appropriate ones
+# return the indexex of holes
+# This is the even/odd rule applied to non-intersecting polygons.
+def order_polygons_try(self,polygonlist):
+    # Simple structure to indicate hierarchy.
+    # childrenbyparent = {index:[child indexes inside index polygon]
+    # parent = {childindex: parentindex}
+    # childless = [index of polygons without children]
+    for i,p in enumerate(polygonlist):
+        insideany = False
+        for nki,nokids in enumerate(childless):
+            if False: # random_point_on_p is inside nokids:
+                parent[p] = nokids
+                childless[nki] = i
+                insideany = True
+                # childless.remove(nokids)
+                # childless.append(i)
+                break
+        if insideany:
+            continue
+        # now do a depth-first
+        # GAH, unfinished. Don't know if should start depth-first or breadth-first search
+        # after ordered, parentless are polygons, holes are the immediate childlren, then grandchildren are polygons, etc.
+        
 class matrixTransform2d:
     _currentTransformation = None
     _dimensions = None
@@ -2692,7 +3438,8 @@ class matrixTransform2d:
         for i in xrange(self._dimensions):
             self._currentTransformation[i][i] = 1.0
         # flip around the x axis to compensate for KiCAD's reversed y coordinates
-        self._currentTransformation[1][1] = -1.0 
+        #self._currentTransformation[1][1] = -1.0 # flip on x axis  ((1,0,0),(0,-1,0),(0,0,1))
+        #self._currentTransformation[0][0] = -1.0 # flip on y axis ((-1,0,0),(0,1,0),(0,0,1))
          # operator.setitem(a, b, c) # Set the value of a at index b to c.
     def zero(self):
         for i in xrange(self._dimensions):
@@ -2702,8 +3449,12 @@ class matrixTransform2d:
         self.zero()
         for i in xrange(self._dimensions):
             self._currentTransformation[i][i] = 1.0
-    def copy(self):
+    def copyArray(self):
         return [[element for element in row] for row in self._currentTransformation]
+    def copyTransform(self):
+        m=matrixTransform2d()
+        m._currentTransformation = self.copyArray()
+        return m
     def multiply(self, G):
         result = []
         for j in range(len(G)): #this loops through a column of F & rows of G
@@ -2712,28 +3463,170 @@ class matrixTransform2d:
                 total[i] += self._currentTransformation[i][j] * G[j][i]
             result.append(total)
         return result
-    def multiplyInPlace(self, G):
+    def multiplyInPlace(self, otherMatrix, pre=False):
+        'If pre, self = self * other; else self = other * self'
         # create a temporary copy to hold the source numbers
-        t=self.copy()
+        if pre:
+            secondMatrix = otherMatrix
+            firstMatrix = self.copyArray()
+        else:
+            firstMatrix = otherMatrix
+            secondMatrix = self.copyArray()
+        resultMatrix = self._currentTransformation
+        # secondMatrix=([16,17,18],[19,110,111],[112,113,114])
+        # firstMatrix = ([6,7,8],[9,10,11],[12,13,14])
+        # the follwoing would be used if the result wasn't the same size as the first matrix
+        # resultMatrix = [[0] * len(firstMatrix[0]) for row in xrange(len(secondMatrix))]
         
+        #result row, column is the row of the first and the column of the second. Mult then summed.
+        # for col in xrange(len(secondMatrix[0])):
+            # for row in xrange(len(firstMatrix)):
+                # print(': ',list(
+                    # itertools.izip_longest(
+                        # iter(firstMatrix[row]),
+                        # itertools.imap(lambda x: x[col],secondMatrix),
+                        # fillvalue=1)       # fill value is useful when firstMatrix is a x/y point, but if this is hte case, point must be a list of lists (well, of one list). And then, the len(firstMatrix[0]) wouldn't be correct for col.  
+                        # ))
+        # use iterators and place the results into the existing resultMatrix
+        for col in xrange(len(secondMatrix[0])):
+            for row in xrange(len(firstMatrix)):
+                resultMatrix[row][col] = \
+                    sum(itertools.starmap(operator.mul,
+                    itertools.izip_longest(
+                        iter(firstMatrix[row]),
+                        itertools.imap(lambda x: x[col],secondMatrix),
+                        fillvalue=1)       # fill value is useful when firstMatrix is a x/y point, but if this is hte case, point must be a list of lists (well, of one list). And then, the len(firstMatrix[0]) wouldn't be correct for col.  
+                        ))
+    def multiplyInPlace_old(self, secondMatrix):
+        # create a temporary copy to hold the source numbers
+        firstMatrix = self.copy()
+        resultMatrix = self._currentTransformation
+        # firstMatrix=([16,17,18],[19,110,111],[112,113,114])
+        # secondMatrix = ([6,7,8],[9,10,11],[12,13,14])
+        # the follwoing would be used if the result wasn't the same size as the first matrix
+        # resultMatrix = [[0] * len(secondMatrix[0]) for row in xrange(len(firstMatrix))]
+        
+        # use iterators and place the results into the existing resultMatrix
+        for col in xrange(len(secondMatrix[0])):
+            for row in xrange(len(firstMatrix)):
+                resultMatrix[row][col] = \
+                    sum(itertools.starmap(operator.mul,
+                    itertools.izip_longest(
+                        iter(self._currentTransformation[row]),
+                        itertools.imap(lambda x: x[col],secondMatrix),
+                        fillvalue=1) # fill value is useful when secondMatrix is a x/y point, but if this is hte case, point must be a list of lists (well, of one list). And then, the len(secondMatrix[0]) wouldn't be correct for col.
+                        ))
+    def xmultiplyInPlace(self, firstMatrix):
+        # create a temporary copy to hold the source numbers
+        secondMatrix = self.copy()
+        resultMatrix = self._currentTransformation
+        # firstMatrix=([16,17,18],[19,110,111],[112,113,114])
+        # secondMatrix = ([6,7,8],[9,10,11],[12,13,14])
+        # the follwoing would be used if the result wasn't the same size as the first matrix
+        # resultMatrix = [[0] * len(secondMatrix[0]) for row in xrange(len(firstMatrix))]
+        
+        # use iterators and place the results into the existing resultMatrix
+        for col in xrange(len(secondMatrix[0])):
+            for row in xrange(len(firstMatrix)):
+                print(list(
+                itertools.izip_longest(
+                                iter(self._currentTransformation[row]),
+                                itertools.imap(lambda x: x[col],secondMatrix),
+                                fillvalue=1)
+                ))
+        for col in xrange(len(secondMatrix[0])):
+            for row in xrange(len(firstMatrix)):
+                resultMatrix[row][col] = \
+                    sum(itertools.starmap(operator.mul,
+                    itertools.izip_longest(
+                        iter(self._currentTransformation[row]),
+                        itertools.imap(lambda x: x[col],secondMatrix),
+                        fillvalue=1) # fill value is useful when secondMatrix is a x/y point, but if this is hte case, point must be a list of lists (well, of one list). And then, the len(secondMatrix[0]) wouldn't be correct for col.
+                        ))
+
+    # http://graphics.cs.cmu.edu/nsp/course/15-462/Spring04/slides/04-transform.pdf
+    # This site seems to say that transposing may be necessary (pg 13-14)
+    # And https://www.math.hmc.edu/~dk/math40/math40-lect07.pdf (page 4) says (AB)T = BT AT
+    # Suppose we have the following transformations applied in this order (I=identity = IT):
+    # Dp , CDp, BCDp, ABCDp 
+    # After the first transformation,
+    # Dp = Dp
+    # (CD)p = 
+   
     def transform(self,point):
         m=self._currentTransformation
         p=point
-        return [m[0][0] * p [0] + m[0][1] * p[1] + m[0][2],  m[1][0] * p [1] + m[1][1] * p[1] + m[1][2]]
-        # returnval = list(xrange(self._dimensions))
-        # for row in xrange(self._dimensions):
-            # returnval[row] = \
-                # sum(itertools.starmap(operator.mul,
-                # itertools.izip_longest(
-                    # itertools.imap(self._currentTransformation[row].__getitem__,xrange(self._dimensions))
-                    # , point, fillvalue='1')
-                    # )
-                    # ) 
+        # return [m[0][0] * p [0] + m[0][1] * p[1] + m[0][2],  m[1][0] * p [1] + m[1][1] * p[1] + m[1][2]]
+        return [m[0][0] * p [0] + m[0][1] * p[1] + m[0][2],  m[1][0] * p[0] + m[1][1] * p[1] + m[1][2]]
                     
-        
-        
+    def translate(self,x,y,origin=None,pre=False):
+        # x,y = self.transform((x,y))
+        # zero = self.transform((0,0))
+        #x,y = self.transform((x,y))
+        if origin is None:
+            zero = (0,0)
+        else:
+            zero = self.transform(origin)
+        self.multiplyInPlace(((1,0,x-zero[0]),(0,1,y-zero[1]),(0,0,1)),pre=pre)
+        #output("translated to {}, {}".format(x,y))
+        #output("Zero is now {}, {}".format(*self.transform((0,0))))
+    def scale(self,xyfactors,origin=None,pre=False): # scale includes reflection ((-1,1) is around yaxis; (1,-1) is around xaxis) 
+        if origin:
+            self.translate(-origin[0],-origin[1])
+        # output("scaled by {}, {}".format(*xyfactors))
+        self.multiplyInPlace(((xyfactors[0],0,0),(0,xyfactors[1],0),(0,0,1)),pre=pre)
+        if origin:
+            self.translate(*origin)
+    def rotate(self,degrees,origin=None,pre=False):
+        if origin:
+            self.translate(-origin[0],-origin[1])
+        r = math.radians(degrees)
+        s=math.sin(r)
+        c=math.cos(r)
+        self.multiplyInPlace(((c,-s,0),(s,c,0),(0,0,1)),pre=pre)
+        if origin:
+            self.translate(*origin)
+    def shear(self,xyfactors,origin=None,pre=False): # m[0][1] = xyfactors[0]; m[1][0] = xyfactors[1] 
+        if origin:
+            self.translate(-origin[0],-origin[1])
+        self.multiplyInPlace(((1,xyfactors[0],0),(xyfactors[1],1,0),(0,0,1)),pre=pre)
+        if origin:
+            self.translate(*origin)
+
+import struct
+
+def unichar(i):
+    try:
+        return unichr(i)
+    except ValueError:
+        return struct.pack('i', i).decode('utf-32')
+
+def f_stringseparator(p_string, separator=',', n=20):
+    if not isinstance(p_string, basestring):    # str or unicode
+        p_string = str(p_string)                # convert only non-strings
+    return separator.join(p_string[i:i+n] for i in range(0, len(p_string), n))
+    #for CJK font, 4.5 minutes to generate geoms, 2.5 minutes to create polygons.
 class commands:
     classinstance = None
+    
+    # def getglyph(self,listofcodes)
+        
+    def getunicoderows(self,*c):
+        """Font [STARTANDCOUNT] STARTANDCOUNT is a list of numbers start,count. Returns count number of characters start index of all unicode characters from the active font."""
+        ustr = u''.join([unichar(ord) for ord in sorted(fonts.getfont()._unicode_codepoint_lookup.keys())])#.decode('unicode-escape')
+        return f_stringseparator(ustr,separator='\n',n=int(c[0][0]))
+
+    def getunicoderange(self,*c):
+        """Font [STARTANDCOUNT] STARTANDCOUNT is a list of numbers start,count. Returns count number of characters start index of all unicode characters from the active font."""
+        ustr = u''.join([unichar(ord) for ord in sorted(fonts.getfont()._unicode_codepoint_lookup.keys())])#.decode('unicode-escape')
+        # output("getur={}".format(c))
+        start,count = int(c[0][0][0]),int(c[0][0][1])
+        # output('start={} count={}'.format(start,count))
+        if count == 0:
+            return ustr[start:]
+        else:
+            return ustr[start:start+count]
+    
     def NEWNET(self,netname):
         """Draw [NETNAME] Create a new net with name netname."""
 
@@ -2759,7 +3652,7 @@ class commands:
         p = []
         for i in items:
             p.extend(list(i.Pads()))
-        return p            
+        return p
     
     def select(self,items):
         'Action [OBJECTLIST] Select the objects'
@@ -2843,74 +3736,100 @@ class commands:
                 for a in arealist[0]]
         return areacorners
 
+    def toggleselect(self,objectlist):
+        """Geometry,Area [OBJECTLIST] Toggle selection of each object in OBJECTLIST."""
+        for i in objectlist[0]:
+            if i.IsSelected():
+                i.ClearSelected()
+            else:
+                i.SetSelected()
+
+
     # Test:
     # "m 81.38357,74.230848 5.612659,1.870887 5.211757,3.474503 2.138156,2.138157 10.958048,-6.1472 0.53454,5.078121 -1.06908,4.009044 -2.80633,4.276312 -2.539056,1.603616 1.202716,4.276312 9.48806,-2.939963 13.36348,8.686253 -8.95353,-0.4009 -2.13815,5.34539 -5.21176,-2.67269 -4.67722,4.54358 -2.40542,-3.0736 -4.009046,6.94901 -3.741775,4.27631 -4.142676,2.53906 1.870887,3.34087 v 3.34087 l -4.409948,2.53906 h -2.806329 l -2.80633,-0.53454 -0.267271,-2.00452 1.469982,-1.60362 0.668176,-0.4009 -0.53454,-1.73726 -4.142676,0.53454 -4.677217,-0.93544 -3.34087,-0.66817 -1.336347,-0.13364 -2.405428,3.87541 -1.469982,1.33635 -1.603616,0.66817 -5.479026,-0.66817 -2.405425,-2.80633 -0.133636,-1.60362 3.207235,-3.34087 1.870887,-2.53906 -2.80633,-2.93996 -2.672696,-4.40995 -0.668174,-2.40543 -4.409945,5.47903 -3.207234,-5.34539 -5.078121,2.13815 -3.474506,-6.14719 -8.285356,0.26726 13.229844,-8.418985 10.022607,4.81085 0.400905,-5.34539 -3.741775,-2.138156 -2.405425,-3.474503 -0.668173,-3.073601 v -7.884451 l 13.363474,5.078121 3.608139,-2.939965 5.211757,-2.271789 3.875408,-1.33635 2.138156,0.133636 3.207234,-3.474503 4.677217,-2.939965 2.405425,-0.668174 z" 1 mm fromsvg drawsegments
     # https://www.w3.org/TR/SVG11/paths.html#PathDataGeneralInformation
 
     # "M172 1745q17 67 70 67q75 0 75 -65q0 -24 -6 -48l-65 -263q-18 -70 -74 -70q-72 0 -72 68q0 22 10 63z"
+    
+    # need a function to output  
+    # either "geoms" or "pointlistoflists" and
+    # either "simplified" or "accurate" (maybe accuracy/error as input where 0=simplified?)
+    def fromsvgcontours(self,svgdpath,debug=False,simplified=0):
+        """Geometry,Conversion [PATH_D_ATTRIBUTE] Converts SVG path element "d attribute"
+            derived from TTF contours to a list geoms suitable for the newdrawing command. 
+            We only have to consider M, L, and Q. newdrawing,"""
+        return svgutil.fromsvgcontours(svgdpath,debug=debug,simplified=simplified)
+        
     def fromsvg(self,inputs):
         """Geometry,Conversion [PATH_D_ATTRIBUTE SCALE] Converts SVG path element "d attribute"
             to a list geoms suitable for the newdrawing command. Applies SCALE
             to all coordinates. newdrawing,"""
+            
+
         #print(path)
         transform = matrixTransform2d()
-        path = inputs[0]
+        svgdpath = inputs[0]
         # if isinstance(inputs[1],basestring):
             # inputnumbers = split(inputs[1])
         # else:
             # inputnumbers = inputs[1]
         
         scale = float(inputs[1])
-        geoms = []
-        tokenized = _tokenize_path(path)
+        geoms = ['Group']
+        tokenized = svgutil._tokenize_path(svgdpath)
         command = None
         position = None
         
         points = [[0.0,0.0],[0.0,0.0],[0.0,0.0],[0.0,0.0]]
         initialposition = None
-        #token = tokenized.next()
+        #token = next(tokenized)
         for token in tokenized:
             if token in "mlhvcsqtaMLHVCSQTA":
                 previouscommand = command
                 command = token
-                currenttoken = tokenized.next()
+                currenttoken = next(tokenized)
             else:
                 currenttoken = token
-            output('token={}; currenttoken={}'.format(token,currenttoken))
+            #output('token={}; currenttoken={}'.format(token,currenttoken))
             
             if token in 'zZ':
                 if initialposition[0] != position[0] or initialposition[1] != position[1]:
+                   
                     geoms.append(['Line',transform.transform(position),transform.transform(initialposition)])
                 continue
             elif command == 'm':
+                if geoms[-1] != 'Group':
+                    geoms.append('Group')
                 # "If a relative moveto (m) appears as the first element of the path, then it is treated as a pair of absolute coordinates. In this case, subsequent pairs of coordinates are treated as relative even though the initial moveto is interpreted as an absolute moveto."
                 if position is None:
                     position = [0.0,0.0]
                 position[0] += float(currenttoken)      * scale
-                position[1] += float(tokenized.next())  * scale
+                position[1] += float(next(tokenized))  * scale
                 initialposition = list(position)
                 command = 'l'
             elif command == 'M':
+                if geoms[-1] != 'Group':
+                    geoms.append('Group')
             # "M633 1437q0 83 78 83h290q86 0 86 -78q0 -72 -88 -72h-208v-72q216 0 366 -151q159 -160 159 -389t-204 -405q-137 -118 -321 -118v-134q0 -101 -91 -101h-282q-89 0 -89 73q0 76 90 76h214v86q-217 0 -373 156q-160 160 -160 361q0 228 120 355q184 195 413 195v135z M633 1147q-132 0 -245 -88q-134 -104 -134 -293q0 -171 128 -284q102 -90 251 -90v755zM792 1147v-755q164 0 263 108q110 120 110 277q0 164 -134 282q-100 88 -239 88z" 0.02 mm fromsvg newdrawing refresh
             # "M633 1437q0 83 78 83" 0.02 mm fromsvg newdrawing refresh
                 if position is None:
                     position = [0.0,0.0]
-                output('currenttoken={}'.format(currenttoken))
+                #output('currenttoken={}'.format(currenttoken))
                 position[0] = float(currenttoken)       * scale
-                position[1] = float(tokenized.next())   * scale
+                position[1] = float(next(tokenized))   * scale
                 initialposition = list(position)
                 command = 'L'
             elif command == 'l':
                 points[0][0] = position[0]
                 points[0][1] = position[1]
                 position[0] += float(currenttoken)      * scale
-                position[1] += float(tokenized.next())  * scale
+                position[1] += float(next(tokenized))  * scale
                 geoms.append(['Line',transform.transform(points[0]),transform.transform(position)])
             elif command == 'L':
                 points[0][0] = position[0]
                 points[0][1] = position[1]
                 position[0] = float(currenttoken)       * scale
-                position[1] = float(tokenized.next())   * scale
+                position[1] = float(next(tokenized))   * scale
                 geoms.append(['Line',transform.transform(points[0]),transform.transform(position)])
             elif command == 'h':
                 points[0][0] = position[0]
@@ -2936,21 +3855,21 @@ class commands:
                 points[0][0] = position[0]
                 points[0][1] = position[1]
                 points[1][0] = points[0][0]+float(currenttoken)       * scale 
-                points[1][1] = points[0][1]+float(tokenized.next())   * scale
-                points[2][0] = points[0][0]+float(tokenized.next())       * scale 
-                points[2][1] = points[0][1]+float(tokenized.next())   * scale
-                position[0] = points[0][0]+float(tokenized.next())    * scale
-                position[1] = points[0][1]+float(tokenized.next())    * scale
+                points[1][1] = points[0][1]+float(next(tokenized))   * scale
+                points[2][0] = points[0][0]+float(next(tokenized))       * scale 
+                points[2][1] = points[0][1]+float(next(tokenized))   * scale
+                position[0] = points[0][0]+float(next(tokenized))    * scale
+                position[1] = points[0][1]+float(next(tokenized))    * scale
                 geoms.append(['Bezier',transform.transform(points[0]),transform.transform(points[1]),transform.transform(points[2]),transform.transform(position)])
             elif command == 'C':
                 points[0][0] = position[0]
                 points[0][1] = position[1]
                 points[1][0] = float(currenttoken)       * scale 
-                points[1][1] = float(tokenized.next())   * scale
-                points[2][0] = float(tokenized.next())       * scale 
-                points[2][1] = float(tokenized.next())   * scale
-                position[0] = float(tokenized.next())    * scale
-                position[1] = float(tokenized.next())    * scale
+                points[1][1] = float(next(tokenized))   * scale
+                points[2][0] = float(next(tokenized))       * scale 
+                points[2][1] = float(next(tokenized))   * scale
+                position[0] = float(next(tokenized))    * scale
+                position[1] = float(next(tokenized))    * scale
                 geoms.append(['Bezier',transform.transform(points[0]),transform.transform(points[1]),transform.transform(points[2]),transform.transform(position)])
             elif command == 's':
                 # Draws a cubic Bezier curve from the current point to (x,y). The first control point is assumed to be the reflection of the second control point on the previous command relative to the current point. (If there is no previous command or if the previous command was not an C, c, S or s, assume the first control point is coincident with the current point.) (x2,y2) is the second control point (i.e., the control point at the end of the curve). S (uppercase) indicates that absolute coordinates will follow; s (lowercase) indicates that relative coordinates will follow. Multiple sets of coordinates may be specified to draw a polybezier. At the end of the command, the new current point becomes the final (x,y) coordinate pair used in the polybezier.
@@ -2962,9 +3881,9 @@ class commands:
                 points[0][0] = position[0]
                 points[0][1] = position[1]
                 points[2][0] = points[0][0]+float(currenttoken)    * scale
-                points[2][1] = points[0][1]+float(tokenized.next())    * scale                    
-                position[0] = points[0][0]+float(tokenized.next())    * scale
-                position[1] = points[0][1]+float(tokenized.next())    * scale                    
+                points[2][1] = points[0][1]+float(next(tokenized))    * scale                    
+                position[0] = points[0][0]+float(next(tokenized))    * scale
+                position[1] = points[0][1]+float(next(tokenized))    * scale                    
                 geoms.append(['Bezier',transform.transform(points[0]),transform.transform(points[1]),transform.transform(points[2]),transform.transform(position)])
                 
             elif command == 'S':
@@ -2976,26 +3895,26 @@ class commands:
                 points[0][0] = position[0]
                 points[0][1] = position[1]
                 points[2][0] = float(currenttoken)    * scale
-                points[2][1] = float(tokenized.next())    * scale                    
-                position[0] = float(tokenized.next())    * scale
-                position[1] = float(tokenized.next())    * scale                    
+                points[2][1] = float(next(tokenized))    * scale                    
+                position[0] = float(next(tokenized))    * scale
+                position[1] = float(next(tokenized))    * scale                    
                 geoms.append(['Bezier',transform.transform(points[0]),transform.transform(points[1]),transform.transform(points[2]),transform.transform(position)])
             elif command == 'q':
                 points[0][0] = position[0]
                 points[0][1] = position[1]
                 points[1][0] = points[0][0]+float(currenttoken)       * scale 
-                points[1][1] = points[0][1]+float(tokenized.next())   * scale
-                position[0] = points[0][0]+float(tokenized.next())    * scale
-                position[1] = points[0][1]+float(tokenized.next())    * scale
-                geoms.append(['Bezier',itertools.imap(transform.transform,beziercubic(points[0],points[1],position))])
+                points[1][1] = points[0][1]+float(next(tokenized))   * scale
+                position[0] = points[0][0]+float(next(tokenized))    * scale
+                position[1] = points[0][1]+float(next(tokenized))    * scale
+                geoms.append(['Bezier',list(itertools.imap(transform.transform,svgutil.beziercubic(points[0],points[1],position)))])
             elif command == 'Q':
                 points[0][0] = position[0]
                 points[0][1] = position[1]
                 points[1][0] = float(currenttoken)       * scale 
-                points[1][1] = float(tokenized.next())   * scale
-                position[0] = float(tokenized.next())    * scale
-                position[1] = float(tokenized.next())    * scale
-                geoms.append(['Bezier',itertools.imap(transform.transform,beziercubic(points[0],points[1],position))])
+                points[1][1] = float(next(tokenized))   * scale
+                position[0] = float(next(tokenized))    * scale
+                position[1] = float(next(tokenized))    * scale
+                geoms.append(['Bezier',list(itertools.imap(transform.transform,svgutil.beziercubic(points[0],points[1],position)))])
             elif command == 't':
                 # Draws a quadratic Bezier curve from the current point to (x,y). The control point is assumed to be the reflection of the control point on the previous command relative to the current point. (If there is no previous command or if the previous command was not a Q, q, T or t, assume the control point is coincident with the current point.) T (uppercase) indicates that absolute coordinates will follow; t (lowercase) indicates that relative coordinates will follow. At the end of the command, the new current point becomes the final (x,y) coordinate pair used in the polybezier.
                 if previouscommand in "qQtT":
@@ -3006,8 +3925,8 @@ class commands:
                 points[0][0] = position[0]
                 points[0][1] = position[1]
                 position[0] = points[0][0]+float(currenttoken)    * scale
-                position[1] = points[0][1]+float(tokenized.next())    * scale                    
-                geoms.append(['Bezier',itertools.imap(transform.transform,beziercubic(points[0],points[1],position))])
+                position[1] = points[0][1]+float(next(tokenized))    * scale                    
+                geoms.append(['Bezier',list(itertools.imap(transform.transform,svgutil.beziercubic(points[0],points[1],position)))])
             elif command == 'T':
                 if previouscommand in "qQtT":
                     points[1] = list(reflected_point(points[1],position))
@@ -3017,33 +3936,33 @@ class commands:
                 points[0][0] = position[0]
                 points[0][1] = position[1]
                 position[0] = float(currenttoken)    * scale
-                position[1] = float(tokenized.next())    * scale                    
-                geoms.append(['Bezier',itertools.imap(transform.transform,beziercubic(points[0],points[1],position))])
+                position[1] = float(next(tokenized))    * scale                    
+                geoms.append(['Bezier',list(itertools.imap(transform.transform,svgutil.beziercubic(points[0],points[1],position)))])
             elif command == 'a':
                 points[0][0] = position[0]
                 points[0][1] = position[1]
                 # float(currenttoken)        * scale # rx
-                float(tokenized.next())      * scale # ry
-                float(tokenized.next())              # x-axis rotation (degrees)
-                bool(int(tokenized.next()))          # large-arc-flag (0 or 1)
-                bool(int(tokenized.next()))          # sweep-flag     (0 or 1)
-                position[0] = points[0][0]+float(tokenized.next())    * scale
-                position[1] = points[0][1]+float(tokenized.next())    * scale                    
+                float(next(tokenized))      * scale # ry
+                float(next(tokenized))              # x-axis rotation (degrees)
+                bool(int(next(tokenized)))          # large-arc-flag (0 or 1)
+                bool(int(next(tokenized)))          # sweep-flag     (0 or 1)
+                position[0] = points[0][0]+float(next(tokenized))    * scale
+                position[1] = points[0][1]+float(next(tokenized))    * scale                    
                 output('Unsupported SVG path command: %s - elliptical arc (relative)'%command)
                 # (rx ry x-axis-rotation large-arc-flag sweep-flag x y)+
             elif command == 'A':
                 points[0][0] = position[0]
                 points[0][1] = position[1]
                 # float(currenttoken)        * scale # rx
-                float(tokenized.next())      * scale # ry
-                float(tokenized.next())              # x-axis rotation (degrees)
-                bool(int(tokenized.next()))          # large-arc-flag (0 or 1)
-                bool(int(tokenized.next()))          # sweep-flag     (0 or 1)
-                position[0] = float(tokenized.next())    * scale
-                position[1] = float(tokenized.next())    * scale                    
+                float(next(tokenized))      * scale # ry
+                float(next(tokenized))              # x-axis rotation (degrees)
+                bool(int(next(tokenized)))          # large-arc-flag (0 or 1)
+                bool(int(next(tokenized)))          # sweep-flag     (0 or 1)
+                position[0] = float(next(tokenized))    * scale
+                position[1] = float(next(tokenized))    * scale                    
                 output('Unsupported SVG path command: %s - elliptical arc (absolute)'%command)
-            if(geoms):
-                output(geoms[-1])
+            # if(geoms):
+                # output(geoms[-1])
             # MoveTo: M, m (implicit L or l)
             # LineTo: L, l, H, h, V, v
             # Cubic Bezier Curve: C, c, S, s
@@ -3254,11 +4173,11 @@ class commands:
         lonely_vertices = [tup[0] for tup in line_by_lonelyvertex]
         lonely_vertices.remove(lonely_line_vertices[0])
         lonely_vertices.remove(lonely_line_vertices[1])
-        output( type(list(lines_by_vertex[lonely_vertices[0]])[0]))
+        #output( type(list(lines_by_vertex[lonely_vertices[0]])[0]))
         vector = lonely_line.GetStart() - list(lines_by_vertex[lonely_vertices[0]])[0].GetEnd()
-        output( "Moving by",vector)
+        #output( "Moving by",vector)
         for line in connected_lines:
-            output( '\t',line.GetStart(),line.GetEnd())
+            #output( '\t',line.GetStart(),line.GetEnd())
             line.Move(vector)
             
         # match lonely_line vertices to each of the other vertices by orientation
@@ -3704,12 +4623,29 @@ class commands:
                 result.append([outtype,segment.GetStart(),segment.GetEnd()])
         return result
 
+# test string
+# Point,0,0,Dot,mm,1,TTranslate,mm,0,10,Point,0,0,Dot,2,TTranslate,mm,0,10,Point,0,0,Dot,3 split newdrawing refresh
+
+# help with array manipulation:
+# seq = [1,2,1]
+# reduce(lambda a,b: a[b],seq[:-1],g)[seq[-1]] = val
+# Traceback (most recent call last):
+  # File "<input>", line 1, in <module>
+# NameError: name 'val' is not defined
+# val = 3
+# reduce(lambda a,b: a[b],c[1],c[0])
+# 749
+# val = 750
+# reduce(lambda a,b: a[b],seq[:-1],g)[seq[-1]] = val
+
     def newdrawing(self,*c):
         """Draw [GEOMS] Define new DRAWSEGMENT shapes, sing layers and attributes from drawparams."""
     
+        fracture = True
+        pendingFracture = False
         c=c[0]
-        layerID = getLayerID(_user_stacks['drawparams']['l'])
-        thickness = max(1,int(_user_stacks['drawparams']['t']))
+        layerID = getLayerID(_user_stacks['Params'][-1]['l'])
+        thickness = max(1,int(_user_stacks['Params'][-1]['t']))
         board = getBoard()
         results = []
         previousPoint = None
@@ -3717,8 +4653,38 @@ class commands:
         previousSegment = None
         previousCornerRadius = None
         currentCornerRadius = None
-        for geom in streamgeom(c):
+        
+        for geom in streamgeom().streamgeom(c):
             # output("GEOM = {}".format(str(geom)))
+
+            if geom[0] in ('Hole', 'Polygon.'):
+                pendingFracture = True
+                previousSegment = None
+                ds = results[-1]
+                if ds.GetShape() != pcbnew.S_POLYGON:
+                    raise TypeError("Hole must be preceded by Polygon")
+                lc=pcbnew.SHAPE_LINE_CHAIN()
+                map(lc.Append,itertools.starmap(pcbnew.VECTOR2I,geom[1:]))
+                ps = ds.GetPolyShape()
+                if geom[0][0] == 'H':
+                    ps.AddHole(lc)
+                else:
+                    ps.AddOutline(lc)
+                continue
+            else:
+                if pendingFracture and fracture:
+                    pendingFracture = False
+                    ds = results[-1]
+                    ps = ds.GetPolyShape()
+                    ps.Fracture(1) # now efficiently, this is called after polygon is complete
+                # ds.GetPolyShape().AddHole(pcbnew.SHAPE_LINE_CHAIN(geom[1:]))
+                
+                # previousPoint = geom[-1]
+                # previousGeom = geom[0]
+
+
+
+
             if geom[0] == 'Line':
                 for argset in itertools.izip_longest(*(iter(geom[1:]),) * 2):
                     ds=pcbnew.DRAWSEGMENT(board)
@@ -3735,6 +4701,8 @@ class commands:
                     ds.SetEnd(argset[1])
                     previousPoint = argset[1]
                 previousGeom = geom[0]
+
+                
             elif geom[0].startswith('Arc') and len(geom[0]) == 4:
                 previousSegment = None
 
@@ -3783,7 +4751,7 @@ class commands:
                         midvector = (mid[0] - center[0],mid[1] - center[1])
                         midangledeg = math.atan2(float(midvector[1]),midvector[0])*180/math.pi
                         
-                        output("sme (angle) = {} > {} > {}".format(int(startangledeg),int(midangledeg),int(endangledeg)))
+                        #output("sme (angle) = {} > {} > {}".format(int(startangledeg),int(midangledeg),int(endangledeg)))
 
                         # start mid end newmid
                         # m0=m-s ; e0=e-s
@@ -3859,7 +4827,7 @@ class commands:
 
                         angle = endangledeg - startangledeg
 
-                        output('C={}; S={}; A={}'.format(center,start,angle))
+                        #output('C={}; S={}; A={}'.format(center,start,angle))
                         ds.SetCenter(pcbnew.wxPoint(*center))
                         ds.SetArcStart(start)
                         ds.SetAngle(int(angle*10))
@@ -3909,7 +4877,7 @@ class commands:
                         ds.SetWidth(thickness)
                         
                         center = centerFromPointsAndRadius(p1,p2,radius)
-                        output('C={}; S={}'.format(center,p1))
+                        #output('C={}; S={}'.format(center,p1))
                         ds.SetCenter(pcbnew.wxPoint(*center))
                         ds.SetEnd(p1)
                         
@@ -3943,6 +4911,7 @@ class commands:
 
                 ds.SetWidth(thickness)
                 ds.SetPolyPoints(geom[1:])
+                # ds.GetPolyShape().AddHole(pcbnew.SHAPE_LINE_CHAIN(geom[1:]))
                 previousPoint = geom[-1]
                 previousGeom = geom[0]
             elif geom[0] == 'PolylineRounded':
@@ -3951,11 +4920,11 @@ class commands:
                 firstsegment = None
                 firstpoint = None
                 cornerRadius = geom[1]
-                output('CornerR={}'.format(cornerRadius))
+                #output('CornerR={}'.format(cornerRadius))
                 startpoints = itertools.islice(geom,2,len(geom))
                 endpoints = itertools.islice(geom,3,len(geom))
                 for start,end in itertools.izip(startpoints,endpoints):
-                    output("s={} e={}".format(start,end))
+                    #output("s={} e={}".format(start,end))
                     ds=pcbnew.DRAWSEGMENT(board)
                     board.Add(ds)
                     ds.SetLayer(layerID)                
@@ -3965,22 +4934,22 @@ class commands:
                     ds.SetStart(start)
                     ds.SetEnd(end)
                     if firstsegment is None:
-                        output('setting firstsegment')
+                        #output('setting firstsegment')
                         firstsegment = ds
                         firstpoint = start
                     else:
-                        output('drawing arc near {}: {}'.format(start,str((results[-1].GetStart(),results[-1].GetEnd(),ds.GetStart(),ds.GetEnd()))))
+                        #output('drawing arc near {}: {}'.format(start,str((results[-1].GetStart(),results[-1].GetEnd(),ds.GetStart(),ds.GetEnd()))))
                         draw_arc_to_lines(cornerRadius,results[-1],ds)
                     results.append(ds)
                 lastsegment = results[-1]
                 if firstpoint[0] == end[0] and firstpoint[1] == end[1]:
-                    output('drawing arc at end near {}'.format(firstpoint))
+                    #output('drawing arc at end near {}'.format(firstpoint))
                     draw_arc_to_lines(cornerRadius,firstsegment,lastsegment)
                 
             
             elif geom[0] == 'Polyline':
                 if previousGeom in ('Dot','Via','Corner'):
-                    output('Continuing polyline from {}'.format(previousPoint))
+                    #output('Continuing polyline from {}'.format(previousPoint))
                  
                  
                 
@@ -4012,11 +4981,11 @@ class commands:
                     ds.SetEnd(end)
                     if previousSegment and currentCornerRadius:
                     # make a corner between previousCornerSegment and ds.
-                        output("Corner radius {} ".format(currentCornerRadius))
+                        #output("Corner radius {} ".format(currentCornerRadius))
                         draw_arc_to_lines(currentCornerRadius,ds,previousSegment)
                         previousSegment = None
                         currentCornerRadius = None
-                    output("s={} e={}".format(start,end))
+                    #output("s={} e={}".format(start,end))
                     previousSegment = ds
                     previousPoint = end
 # a=[0,1,2,3,4,5,6,7,8]
@@ -4068,13 +5037,13 @@ class commands:
                 ds.SetWidth(max(w,d))
                 ds.SetDrill(min(w,d))
                 
-                fromLayerID = getLayerID(_user_stacks['drawparams']['l'])
+                fromLayerID = getLayerID(_user_stacks['Params'][-1]['l'])
                 #output('geomlen={}; layerindex={}'.format(len(geom),typeindex+3))
                 if len(geom) > (typeindex+3):
                     tolay = geom[typeindex+3]
                     toLayerID = getLayerID(tolay)
-                    PARAM(tolay,'l')
-                    layerID = getLayerID(_user_stacks['drawparams']['l'])
+                    PARAM('l',tolay)
+                    layerID = getLayerID(_user_stacks['Params'][-1]['l'])
                 else:
                     toLayerID = fromLayerID
                 ds.SetLayerPair(fromLayerID,toLayerID)
@@ -4098,23 +5067,24 @@ class commands:
 
                 ds.SetWidth(radius)
                 #output('C={}; S={}'.format(center,start))
+                #output("Drawing dot at center {}, {}".format(*centerpoint))
                 ds.SetCenter(centerpoint)
                 ds.SetEnd(centerpoint)#pcbnew.wxPoint(centerpoint[0]+1,centerpoint[1]))
-
+                #output("After Center={}; Position={}".format(ds.GetCenter(),ds.GetPosition()))
             elif geom[0] == 'Layer':
-                PARAM(geom[-1],'l')
-                layerID = getLayerID(_user_stacks['drawparams']['l'])
+                PARAM('l',geom[-1])
+                layerID = getLayerID(_user_stacks['Params'][-1]['l'])
                 
             elif geom[0] == 'Thickness':
-                PARAM(geom[-1],'t')
-                thickness = max(1,int(_user_stacks['drawparams']['t']))
+                PARAM('t',geom[-1])
+                thickness = max(1,int(_user_stacks['Params'][-1]['t']))
 
             elif geom[0] == 'Text':
                 # text,pos,size
                 text = ' '.join(geom[2:])
                 if '\\' in text:
                     text = decodestring(text)
-                text = draw_text(text,geom[1],[_user_stacks['drawparams']['w'],_user_stacks['drawparams']['h']],layer=_user_stacks['drawparams']['l'],thickness=_user_stacks['drawparams']['t'])
+                text = draw_text(text,geom[1],[_user_stacks['Params'][-1]['w'],_user_stacks['Params'][-1]['h']],layer=_user_stacks['Params'][-1]['l'],thickness=_user_stacks['Params'][-1]['t'])
                 results.append(text)
             elif geom[0] == 'Point':
                 previousSegment = None
@@ -4132,13 +5102,13 @@ class commands:
         """Draw [OBJECTS] Define new tracks using layers and attributes from drawparams."""
         results = []
         c=c[0]
-        layerID = getLayerID(_user_stacks['drawparams']['l'])
-        thickness = max(1,int(_user_stacks['drawparams']['t']))
-        for geom in streamgeom(c):
+        layerID = getLayerID(_user_stacks['Params'][-1]['l'])
+        thickness = max(1,int(_user_stacks['Params'][-1]['t']))
+        for geom in streamgeom().streamgeom(c):
             if geom[0] == 'Line':
                 for argset in itertools.izip_longest(*(iter(geom[1:]),) * 2):
                     # makeline(*argset)
-                    ds = draw_segmentwx(*argset,layer=_user_stacks['drawparams']['l'],thickness=_user_stacks['drawparams']['t'])
+                    ds = draw_segmentwx(*argset,layer=_user_stacks['Params'][-1]['l'],thickness=_user_stacks['Params'][-1]['t'])
                     results.append(ds)
 
             elif geom[0].startswith('Arc') and len(geom[0] == 4):
@@ -4176,7 +5146,7 @@ class commands:
                         midanglerad = ((startangledeg*math.pi/180)+endanglerad)/2
                         midx=center[0]+r*math.cos(midanglerad)
                         midy=center[1]+r*math.sin(midanglerad)
-                        output('CSA={} --> SME={}'.format(str((center,start,angle)),str((start[0],start[1],midx,midy,endx,endy))))
+                        #output('CSA={} --> SME={}'.format(str((center,start,angle)),str((start[0],start[1],midx,midy,endx,endy))))
                         # ds.SetStart(argset[0])
                         # ds.SetMid(argset[1])
                         # ds.SetEnd(argset[2])
@@ -4195,10 +5165,766 @@ class commands:
             # VIATYPE_THROUGH
                 pass
         return results
-            
+    
+    def contourlisttopolygonpoints(self,contourlist,bsteps=None,arcerror=None,arcunits=None):
+        """Geometry [GEOM_LIST] Convert geoms to line segments. getgeoms,"""
+        if bsteps is None:
+            bsteps = _user_stacks['Params'][-1].get('beziersteps',5)
+        if arcerror is None:
+            arcerror = _user_stacks['Params'][-1].get('arcerror',0.1)
+        if arcunits is None:
+            arcunits = _user_stacks['Params'][-1].get('arcunits',2500)
+        # points = []
+        points = []
+        firstwinding = None
+        c=contourlist
+        #output('Geoms input to conourlist:\n{}'.format(pprint.pformat(c)))
 
-            #output(': {}'.format(str(geom)))
-       
+        layerID = getLayerID(_user_stacks['Params'][-1]['l'])
+        thickness = max(1,int(_user_stacks['Params'][-1]['t']))
+        arcerror = _user_stacks['Params'][-1].get('arcerror',0.1)
+        arcunits = _user_stacks['Params'][-1].get('arcunits',2500)
+        
+        board = getBoard()
+        results = []
+        previousPoint = None
+        previousGeom = None
+        previousSegment = None
+        previousCornerRadius = None
+        currentCornerRadius = None
+        for contour in contourlist:
+            points.append([])
+            for geom in streamgeom().streamgeom(contour):
+                # output("GEOM = {}".format(str(geom)))
+
+                if geom[0] == 'Group':
+                    if points and points[-1]:
+                        currentpoints = points[-1][1:]
+                        if len(currentpoints) > 0:
+                            if firstwinding is None:
+                                if currentpoints:
+                                    firstwinding = IsWindingCW(currentpoints)
+                                    # output('firstwinding is Clockwise? {}'.format(firstwinding))
+                            elif firstwinding != IsWindingCW(currentpoints):
+                                #points[-1][0] = 'Hole'
+                                pass #output('polygon winding different than first: polygon Hole')
+                            else:
+                                pass #output('polygon winding matches first path (CW? {})'.format(firstwinding))
+                    points.append(['Polygon'])
+                if geom[0] == 'Line':
+                    for argset in itertools.izip_longest(*(iter(geom[1:]),) * 2):
+                        if points[-1]:
+                            points[-1].append(argset[1])
+                        else:
+                            points[-1].extend(argset)
+                    previousGeom = geom[0]
+                elif geom[0].startswith('Arc') and len(geom[0]) == 4:
+                    previousSegment = None
+                    
+                # Autodesk: To create an arc, you can specify combinations of center, endpoint, start point, radius, angle, chord length, and direction values
+                # Arc: A chord, a central angle or an inscribed angle may divide a circle into two arcs. The smaller of the two arcs is called the minor arc. The larger of the two arcs is called the major arc.
+                
+                    if geom[0][-1] == 'C': # center start angle
+                        for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+                            points[-1].extend(arctopoints(*argset,arcerror=arcerror,arcunits=arcunits)) # center,start,angle
+                    elif geom[0][-1] == 'O': # start, mid, end
+                        for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+                            (start, mid, end) = argset
+                            
+                            # 'O' to 'C'
+                            center = centerFromPoints(*argset)
+                            startvector = (start[0] - center[0],start[1] - center[1])
+                            startangledeg = math.atan2(float(startvector[1]),startvector[0])*180/math.pi
+
+                            endvector = (end[0] - center[0],end[1] - center[1])
+                            endangledeg = math.atan2(float(endvector[1]),endvector[0])*180/math.pi
+                            
+                            angle = endangledeg - startangledeg
+                            
+                            midvector = (mid[0] - center[0],mid[1] - center[1])
+                            midangledeg = math.atan2(float(midvector[1]),midvector[0])*180/math.pi
+                                                    
+                            s=startangledeg % 360
+                            m=midangledeg % 360
+                            e=endangledeg % 360
+                            
+                            if s<m<e or m<e<s or e<s<m:
+                                angle = angle%360
+                            elif s<e<m or m<s<e or e<m<s:
+                                angle = angle%360-360
+                            points[-1].extend(arctopoints(center,start,angle,arcerror=arcerror,arcunits=arcunits)) # center,start,angle
+                            previousPoint = end
+                    elif geom[0][-1] == 'P': # center start end
+                        for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+
+                            # output('Unsupported ArcP with C={}; S={}; E={}'.format(*argset))
+                            center,start,end = argset
+                            
+                            startvector = (start[0] - center[0],start[1] - center[1])
+                            startangledeg = math.atan2(float(startvector[1]),startvector[0])*180/math.pi
+                            
+                            endvector = (end[0] - center[0],end[1] - center[1])
+                            endangledeg = math.atan2(float(endvector[1]),endvector[0])*180/math.pi
+
+                            angle = endangledeg - startangledeg
+
+                            points[-1].extend(arctopoints(center,start,angle,arcerror=arcerror,arcunits=arcunits)) # center,start,angle
+                            previousPoint = end
+                    elif geom[0][-1] == 'R': # start end radius
+                        for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+                            start,end,radius = argset
+                            
+                            center = centerFromPointsAndRadius(start,end,radius)
+                            startvector = (start[0] - center[0],start[1] - center[1])
+                            startangledeg = math.atan2(float(startvector[1]),startvector[0])*180/math.pi
+                            
+                            endvector = (end[0] - center[0],end[1] - center[1])
+                            endangledeg = math.atan2(float(endvector[1]),endvector[0])*180/math.pi
+
+                            angle = endangledeg - startangledeg
+
+                            points[-1].extend(arctopoints(center,start,angle,arcerror=arcerror,arcunits=arcunits)) # center,start,angle
+                    previousGeom = geom[0]
+                elif geom[0] == 'Polyline':
+                    if previousGeom in ('Dot','Via','Corner'):
+                        #output('Continuing polyline from {}'.format(previousPoint))
+                     
+                     
+                    
+                        # output("previous Dot")
+                        previousGeom = geom[0]
+                        geom[0] = previousPoint
+                        startpoints = iter(geom)
+                        endpoints = iter(geom[1:])
+                        # endpoints = itertools.islice(geom,1,len(geom)-1)
+                    else:
+                        # output("previous not Dot")
+                        previousGeom = geom[0]
+                        startpoints = itertools.islice(geom,1,len(geom))
+                        endpoints = itertools.islice(geom,2,len(geom))
+                    for start,end in itertools.izip(startpoints,endpoints):
+                        if previousSegment and currentCornerRadius:
+                        # # make a corner between previousCornerSegment and ds.
+                            # output("Corner radius {} ".format(currentCornerRadius))
+                            # draw_arc_to_lines(currentCornerRadius,ds,previousSegment)
+                            # previousSegment = None
+                            # currentCornerRadius = None
+
+                            pass
+                        else:
+                            points[-1].append(end) # This misses the first point
+                        previousSegment = ds
+                        previousPoint = end
+    # a=[0,1,2,3,4,5,6,7,8]
+    # s=itertools.islice(a,1,len(a))
+
+
+                elif geom[0].startswith('Bezier'):
+                    for argset in itertools.izip_longest(*(iter(geom[1:]),) * 4):
+                        previousPoint = argset[3]
+                        if points[-1]:
+                            points[-1].extend(beziertopoints(*argset,steps=bsteps)[1:])
+                        else:
+                            points[-1].extend(beziertopoints(*argset,steps=bsteps))
+                        previousSegment = None # change this to ds when Corner after Bezier is supported
+                    previousGeom = geom[0]
+                elif geom[0] == 'Via': # arguments are [Type] Width DrillValue [ToLayer] 
+                    previousSegment = None
+                    previousGeom = geom[0]
+                    viatypes = {
+                        'Blind':pcbnew.VIA_BLIND_BURIED,
+                        'Buried':pcbnew.VIA_BLIND_BURIED,
+                        'Through':pcbnew.VIA_THROUGH,
+                        'Micro':pcbnew.VIA_MICROVIA
+                        # pcbnew.VIA_NOT_DEFINED 
+                    }
+                    viatype = viatypes.get(geom[1],None)
+                    if viatype:
+                        typeindex = 1
+                    else:
+                        typeindex = 0
+                        viatype = viatypes['Through']
+                    w = int(pcbnew.IU_PER_MM*float(geom[typeindex+1]))
+                    d = int(pcbnew.IU_PER_MM*float(geom[typeindex+2]))
+                    
+                    fromLayerID = getLayerID(_user_stacks['Params'][-1]['l'])
+                    #output('geomlen={}; layerindex={}'.format(len(geom),typeindex+3))
+                    if len(geom) > (typeindex+3):
+                        tolay = geom[typeindex+3]
+                        toLayerID = getLayerID(tolay)
+                        PARAM('l',tolay)
+                        layerID = getLayerID(_user_stacks['Params'][-1]['l'])
+                    else:
+                        toLayerID = fromLayerID
+                    ds.SetLayerPair(fromLayerID,toLayerID)
+                    
+                    # SetWidth(int)?
+                    #SetDrillDefault()
+                elif geom[0] == 'Dot': # argument is Diameter
+                    previousSegment = None
+                    previousGeom = geom[0]
+                    radius = int(geom[1])
+                    centerpoint = previousPoint
+                    
+                    # for argset in itertools.izip_longest(*(iter(geom[2:]),) * 1):
+                        # centerpoint = argset
+                    ds=pcbnew.DRAWSEGMENT(board)
+                    board.Add(ds)
+                    results.append(ds)
+                    ds.SetLayer(layerID)                
+                    ds.SetShape(pcbnew.S_CIRCLE)
+                    
+
+                    ds.SetWidth(radius)
+                    #output('C={}; S={}'.format(center,start))
+                    ds.SetCenter(centerpoint)
+                    ds.SetEnd(centerpoint)#pcbnew.wxPoint(centerpoint[0]+1,centerpoint[1]))
+
+                elif geom[0] == 'Layer':
+                    PARAM('l',geom[-1])
+                    layerID = getLayerID(_user_stacks['Params'][-1]['l'])
+                    
+                elif geom[0] == 'Thickness':
+                    PARAM('t',geom[-1])
+                    thickness = max(1,int(_user_stacks['Params'][-1]['t']))
+
+                elif geom[0] == 'Text':
+                    # text,pos,size
+                    text = ' '.join(geom[2:])
+                    if '\\' in text:
+                        text = decodestring(text)
+                    text = draw_text(text,geom[1],[_user_stacks['Params'][-1]['w'],_user_stacks['Params'][-1]['h']],layer=_user_stacks['Params'][-1]['l'],thickness=_user_stacks['Params'][-1]['t'])
+                    results.append(text)
+                elif geom[0] == 'Point':
+                    previousSegment = None
+                    previousGeom = geom[0]
+                    previousPoint = geom[-1]
+                elif geom[0] == 'Corner':
+                    previousGeom = geom[0]
+                    if len(geom) >= 2:
+                        currentCornerRadius = geom[1]
+                    else:
+                        currentCornerRadius = previousCornerRadius
+        
+        
+        # if points and points[-1]:
+            # currentpoints = points[-1][1:]
+            # if len(currentpoints) > 0:
+                # if firstwinding is None:  # for ttf fonts, CW is contour, CCW is hole
+                    # if currentpoints:
+                        # firstwinding = IsWindingCW(currentpoints)
+                        # output('firstwinding is {}'.format(firstwinding))
+                # elif firstwinding != IsWindingCW(currentpoints):
+                    # #output('polygon Hole')
+                    # pass #points[-1][0] = 'Hole'
+                    # #output('polygon winding different than first')
+                # else:
+                    # pass #output('polygon winding matches first')
+
+        return points
+
+    def geomtopolygon(self,geomlist):
+        """Geometry [GEOM_LIST] Convert geoms to line segments. getgeoms,"""
+        # points = []
+        points = [['Polygon']]
+        firstwinding = None
+        c=geomlist
+        layerID = getLayerID(_user_stacks['Params'][-1]['l'])
+        thickness = max(1,int(_user_stacks['Params'][-1]['t']))
+        board = getBoard()
+        results = []
+        previousPoint = None
+        previousGeom = None
+        previousSegment = None
+        previousCornerRadius = None
+        currentCornerRadius = None
+        
+        for geom in streamgeom().streamgeom(c):
+            # output("GEOM = {}".format(str(geom)))
+
+            if geom[0] == 'Group':
+                if points and points[-1]:
+                    currentpoints = points[-1][1:]
+                    if len(currentpoints) > 0:
+                        if firstwinding is None:
+                            if currentpoints:
+                                firstwinding = IsWindingCW(currentpoints)
+                                # output('firstwinding is Clockwise? {}'.format(firstwinding))
+                        elif firstwinding != IsWindingCW(currentpoints):
+                            #points[-1][0] = 'Hole'
+                            pass #output('polygon winding different than first: polygon Hole')
+                        else:
+                            pass #output('polygon winding matches first path (CW? {})'.format(firstwinding))
+                points.append(['Polygon'])
+            if geom[0] == 'Line':
+                for argset in itertools.izip_longest(*(iter(geom[1:]),) * 2):
+                    points[-1].extend(argset)
+                previousGeom = geom[0]
+            elif geom[0].startswith('Arc') and len(geom[0]) == 4:
+                previousSegment = None
+
+            # Autodesk: To create an arc, you can specify combinations of center, endpoint, start point, radius, angle, chord length, and direction values
+            # Arc: A chord, a central angle or an inscribed angle may divide a circle into two arcs. The smaller of the two arcs is called the minor arc. The larger of the two arcs is called the major arc.
+            
+                if geom[0][-1] == 'C': # center start angle
+                    for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+                        points[-1].extend(arctopoints(*argset)) # center,start,angle
+                elif geom[0][-1] == 'O': # start, mid, end
+                    for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+                        (start, mid, end) = argset
+                        
+                        # 'O' to 'C'
+                        center = centerFromPoints(*argset)
+                        startvector = (start[0] - center[0],start[1] - center[1])
+                        startangledeg = math.atan2(float(startvector[1]),startvector[0])*180/math.pi
+
+                        endvector = (end[0] - center[0],end[1] - center[1])
+                        endangledeg = math.atan2(float(endvector[1]),endvector[0])*180/math.pi
+                        
+                        angle = endangledeg - startangledeg
+                        
+                        midvector = (mid[0] - center[0],mid[1] - center[1])
+                        midangledeg = math.atan2(float(midvector[1]),midvector[0])*180/math.pi
+                                                
+                        s=startangledeg % 360
+                        m=midangledeg % 360
+                        e=endangledeg % 360
+                        
+                        if s<m<e or m<e<s or e<s<m:
+                            angle = angle%360
+                        elif s<e<m or m<s<e or e<m<s:
+                            angle = angle%360-360
+                        points[-1].extend(arctopoints(pcbnew.wxPoint(*center),pcbnew.wxPoint(*start),angle)) # center,start,angle
+                        previousPoint = end
+                elif geom[0][-1] == 'P': # center start end
+                    for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+
+                        # output('Unsupported ArcP with C={}; S={}; E={}'.format(*argset))
+                        center,start,end = argset
+                        
+                        startvector = (start[0] - center[0],start[1] - center[1])
+                        startangledeg = math.atan2(float(startvector[1]),startvector[0])*180/math.pi
+                        
+                        endvector = (end[0] - center[0],end[1] - center[1])
+                        endangledeg = math.atan2(float(endvector[1]),endvector[0])*180/math.pi
+
+                        angle = endangledeg - startangledeg
+
+                        points[-1].extend(arctopoints(center,start,angle)) # center,start,angle
+                        previousPoint = end
+                elif geom[0][-1] == 'R': # start end radius
+                    for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+                        start,end,radius = argset
+                        
+                        center = centerFromPointsAndRadius(start,end,radius)
+                        startvector = (start[0] - center[0],start[1] - center[1])
+                        startangledeg = math.atan2(float(startvector[1]),startvector[0])*180/math.pi
+                        
+                        endvector = (end[0] - center[0],end[1] - center[1])
+                        endangledeg = math.atan2(float(endvector[1]),endvector[0])*180/math.pi
+
+                        angle = endangledeg - startangledeg
+
+                        points[-1].extend(arctopoints(pcbnew.wxPoint(*center),start,angle)) # center,start,angle
+                previousGeom = geom[0]
+
+            # elif geom[0].startswith('Circle') and len(geom[0]) == 7:
+                
+                # previousSegment = None
+                # if geom[0][-1] == 'C':
+                    # for argset in itertools.izip_longest(*(iter(geom[1:]),) * 2):
+                        # center,radius = argset
+                        # end = pcbnew.wxPoint(center[0]+radius,center[1])
+
+                        # ds=pcbnew.DRAWSEGMENT(board)
+                        # board.Add(ds)
+                        # results.append(ds)
+                        # ds.SetLayer(layerID)                
+                        # ds.SetShape(pcbnew.S_CIRCLE)
+
+                        # ds.SetWidth(thickness)
+                        # #output('C={}; S={}'.format(center,start))
+                        # ds.SetCenter(center)
+                        # ds.SetEnd(end)
+                    
+                # elif geom[0][-1] == 'P':
+
+                    # for argset in itertools.izip_longest(*(iter(geom[1:]),) * 2):
+                        # center,end = argset
+                        # ds=pcbnew.DRAWSEGMENT(board)
+                        # board.Add(ds)
+                        # results.append(ds)
+                        # ds.SetLayer(layerID)                
+                        # ds.SetShape(pcbnew.S_CIRCLE)
+
+                        # ds.SetWidth(thickness)
+                        # #output('C={}; S={}'.format(center,start))
+                        # ds.SetCenter(center)
+                        # ds.SetEnd(end)
+                # elif geom[0][-1] == 'R':
+                    # for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+                        # p1,p2,radius = argset
+                        # ds=pcbnew.DRAWSEGMENT(board)
+                        # board.Add(ds)
+                        # results.append(ds)
+                        # ds.SetLayer(layerID)                
+                        # ds.SetShape(pcbnew.S_CIRCLE)
+
+                        # ds.SetWidth(thickness)
+                        
+                        # center = centerFromPointsAndRadius(p1,p2,radius)
+                        # output('C={}; S={}'.format(center,p1))
+                        # ds.SetCenter(pcbnew.wxPoint(*center))
+                        # ds.SetEnd(p1)
+                        
+                # elif geom[0][-1] == 'O':
+                    # for argset in itertools.izip_longest(*(iter(geom[1:]),) * 3):
+                        # end,p2,p3 = argset
+                        # ds=pcbnew.DRAWSEGMENT(board)
+                        # board.Add(ds)
+                        # results.append(ds)
+                        # ds.SetLayer(layerID)                
+                        # ds.SetShape(pcbnew.S_CIRCLE)
+
+                        # ds.SetWidth(thickness)
+                        # # output("three points: {} {} {}".format(*argset))
+                        
+                        # center = centerFromPoints(*argset)
+                        # center = pcbnew.wxPoint(*center)
+                        # # output("center ({})={}".format(type(center),center))
+                        # # output("end ({})={}".format(type(end),end))
+                        # ds.SetCenter(center)
+                        # ds.SetEnd(end)
+                # previousGeom = geom[0]
+
+            # elif geom[0] == 'Polygon':
+                # previousSegment = None
+                # ds=pcbnew.DRAWSEGMENT(board)
+                # board.Add(ds)
+                # results.append(ds)
+                # ds.SetLayer(layerID)                
+                # ds.SetShape(pcbnew.S_POLYGON)
+
+                # ds.SetWidth(thickness)
+                # ds.SetPolyPoints(geom[1:])
+                # previousPoint = geom[-1]
+                # previousGeom = geom[0]
+            # elif geom[0] == 'PolylineRounded':
+            # # PolylineRounded,mm,2,20,20,25,25,20,25,30,30,35,35,40,35 split newdrawing refresh
+            # # PolylineRounded,mm,2,20,20,20,25,20,20,25,20,20 split newdrawing refresh
+                # firstsegment = None
+                # firstpoint = None
+                # cornerRadius = geom[1]
+                # output('CornerR={}'.format(cornerRadius))
+                # startpoints = itertools.islice(geom,2,len(geom))
+                # endpoints = itertools.islice(geom,3,len(geom))
+                # for start,end in itertools.izip(startpoints,endpoints):
+                    # output("s={} e={}".format(start,end))
+                    # ds=pcbnew.DRAWSEGMENT(board)
+                    # board.Add(ds)
+                    # ds.SetLayer(layerID)                
+                    # ds.SetShape(pcbnew.S_SEGMENT)
+                    
+                    # ds.SetWidth(thickness)
+                    # ds.SetStart(start)
+                    # ds.SetEnd(end)
+                    # if firstsegment is None:
+                        # output('setting firstsegment')
+                        # firstsegment = ds
+                        # firstpoint = start
+                    # else:
+                        # output('drawing arc near {}: {}'.format(start,str((results[-1].GetStart(),results[-1].GetEnd(),ds.GetStart(),ds.GetEnd()))))
+                        # draw_arc_to_lines(cornerRadius,results[-1],ds)
+                    # results.append(ds)
+                # lastsegment = results[-1]
+                # if firstpoint[0] == end[0] and firstpoint[1] == end[1]:
+                    # output('drawing arc at end near {}'.format(firstpoint))
+                    # draw_arc_to_lines(cornerRadius,firstsegment,lastsegment)
+                
+            
+            elif geom[0] == 'Polyline':
+                if previousGeom in ('Dot','Via','Corner'):
+                    output('Continuing polyline from {}'.format(previousPoint))
+                 
+                 
+                
+                    # output("previous Dot")
+                    previousGeom = geom[0]
+                    geom[0] = previousPoint
+                    startpoints = iter(geom)
+                    endpoints = iter(geom[1:])
+                    # endpoints = itertools.islice(geom,1,len(geom)-1)
+                else:
+                    # output("previous not Dot")
+                    previousGeom = geom[0]
+                    startpoints = itertools.islice(geom,1,len(geom))
+                    endpoints = itertools.islice(geom,2,len(geom))
+                for start,end in itertools.izip(startpoints,endpoints):
+                    if previousSegment and currentCornerRadius:
+                    # # make a corner between previousCornerSegment and ds.
+                        # output("Corner radius {} ".format(currentCornerRadius))
+                        # draw_arc_to_lines(currentCornerRadius,ds,previousSegment)
+                        # previousSegment = None
+                        # currentCornerRadius = None
+
+                        pass
+                    else:
+                        points[-1].append(start,end)
+                    previousSegment = ds
+                    previousPoint = end
+# a=[0,1,2,3,4,5,6,7,8]
+# s=itertools.islice(a,1,len(a))
+
+
+            elif geom[0].startswith('Bezier'):
+                for argset in itertools.izip_longest(*(iter(geom[1:]),) * 4):
+                    previousPoint = argset[3]
+                    points[-1].extend(beziertopoints(*argset))
+                    previousSegment = None # change this to ds when Corner after Bezier is supported
+                previousGeom = geom[0]
+            elif geom[0] == 'Via': # arguments are [Type] Width DrillValue [ToLayer] 
+                previousSegment = None
+                previousGeom = geom[0]
+                viatypes = {
+                    'Blind':pcbnew.VIA_BLIND_BURIED,
+                    'Buried':pcbnew.VIA_BLIND_BURIED,
+                    'Through':pcbnew.VIA_THROUGH,
+                    'Micro':pcbnew.VIA_MICROVIA
+                    # pcbnew.VIA_NOT_DEFINED 
+                }
+                viatype = viatypes.get(geom[1],None)
+                if viatype:
+                    typeindex = 1
+                else:
+                    typeindex = 0
+                    viatype = viatypes['Through']
+                w = int(pcbnew.IU_PER_MM*float(geom[typeindex+1]))
+                d = int(pcbnew.IU_PER_MM*float(geom[typeindex+2]))
+                
+                fromLayerID = getLayerID(_user_stacks['Params'][-1]['l'])
+                #output('geomlen={}; layerindex={}'.format(len(geom),typeindex+3))
+                if len(geom) > (typeindex+3):
+                    tolay = geom[typeindex+3]
+                    toLayerID = getLayerID(tolay)
+                    PARAM('l',tolay)
+                    layerID = getLayerID(_user_stacks['Params'][-1]['l'])
+                else:
+                    toLayerID = fromLayerID
+                ds.SetLayerPair(fromLayerID,toLayerID)
+                
+                # SetWidth(int)?
+                #SetDrillDefault()
+            elif geom[0] == 'Dot': # argument is Diameter
+                previousSegment = None
+                previousGeom = geom[0]
+                radius = int(geom[1])
+                centerpoint = previousPoint
+                
+                # for argset in itertools.izip_longest(*(iter(geom[2:]),) * 1):
+                    # centerpoint = argset
+                ds=pcbnew.DRAWSEGMENT(board)
+                board.Add(ds)
+                results.append(ds)
+                ds.SetLayer(layerID)                
+                ds.SetShape(pcbnew.S_CIRCLE)
+                
+
+                ds.SetWidth(radius)
+                #output('C={}; S={}'.format(center,start))
+                ds.SetCenter(centerpoint)
+                ds.SetEnd(centerpoint)#pcbnew.wxPoint(centerpoint[0]+1,centerpoint[1]))
+
+            elif geom[0] == 'Layer':
+                PARAM('l',geom[-1])
+                layerID = getLayerID(_user_stacks['Params'][-1]['l'])
+                
+            elif geom[0] == 'Thickness':
+                PARAM('t',geom[-1])
+                thickness = max(1,int(_user_stacks['Params'][-1]['t']))
+
+            elif geom[0] == 'Text':
+                # text,pos,size
+                text = ' '.join(geom[2:])
+                if '\\' in text:
+                    text = decodestring(text)
+                text = draw_text(text,geom[1],[_user_stacks['Params'][-1]['w'],_user_stacks['Params'][-1]['h']],layer=_user_stacks['Params'][-1]['l'],thickness=_user_stacks['Params'][-1]['t'])
+                results.append(text)
+            elif geom[0] == 'Point':
+                previousSegment = None
+                previousGeom = geom[0]
+                previousPoint = geom[-1]
+            elif geom[0] == 'Corner':
+                previousGeom = geom[0]
+                if len(geom) >= 2:
+                    currentCornerRadius = geom[1]
+                else:
+                    currentCornerRadius = previousCornerRadius
+        if points and points[-1]:
+            currentpoints = points[-1][1:]
+            if len(currentpoints) > 0:
+                if firstwinding is None:  # for ttf fonts, CW is contour, CCW is hole
+                    if currentpoints:
+                        firstwinding = IsWindingCW(currentpoints)
+                        # output('firstwinding is {}'.format(firstwinding))
+                elif firstwinding != IsWindingCW(currentpoints):
+                    #output('polygon Hole')
+                    pass #points[-1][0] = 'Hole'
+                    #output('polygon winding different than first')
+                else:
+                    pass #output('polygon winding matches first')
+
+
+        # Now, we have both the simplified list and the detailed points list.
+        # each item in orderedlist is a list containing 'Polygon' or 'Hole' followed by polygon points.
+        # We need to convert that to a fractured list of polygons.
+        # 1) For each
+
+        return points
+        # coding=<encoding name>
+        # 1\n2 stringtogeom Thickness,mm,0.1,TScale,0.04,0.04 split swap append newdrawing refresh
+        # "KiCADは素晴\nらしいオープンソースプロジェクトです" stringtogeom newdrawing refresh
+        # "Το KiCAD είναι ένα φοβερό\nέργο ανοιχτού κώδικα.\n\n KiCADは素晴\nらしいオープンソースプロジェクトです\n\n1234567890\n!@#$%^&*()\nABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz" stringtogeom TScale,0.01,0.01 split swap append newdrawing refresh
+        # 1234567890\n!@#$%^&*()\nABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz stringtogeom geomtopolygons copy TScale,0.01,0.01 split swap append newdrawing refresh
+        # ab\ncd stringtogeom geomtopolygon Thickness,1,TScale,0.01,0.01 split swap append newdrawing refresh
+        # aa stringtogeom Thickness,1,TTranslate,0,15000000,TScale,0.05,0.05 split swap append newdrawing refresh
+        # "Το KiCAD είναι ένα φοβερό\nέργο ανοιχτού κώδικα.\n\n KiCADは素晴\nらしいオープンソースプロジェクトです\n\n1234567890\n!@#$%^&*()\nABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz" stringtogeom Thickness,1,TTranslate,0,15000000,TScale,0.05,0.05 split swap append newdrawing refresh
+        # : r "" int getunicoderange concat \n concat ; ' 0,100 r 100,100 r 200,100 r 300,100 r 400,100 r 500,100 r 600,100 r 700,100 r 800,100 r 900,100 r print stringtogeom Thickness,1,TScale,0.05,0.05 split swap append newdrawing refresh
+        # : r "" int getunicoderange concat \n concat ; ' 0,3 r 100,3 r 200,3 r 300,3 r 400,3 r 500,3 r 600,3 r 700,3 r 800,3 r 900,3 r 1000,3 r print stringtogeom Thickness,1,TScale,0.05,0.05 split swap append newdrawing refresh
+        # : r "" 1 pick list 1 pick append int getunicoderange concat \n concat ; ' 0 3 int copy pull 2 int + list swap append r 100,3 r 200,3 r 300,3 r 400,3 r 500,3 r 600,3 r 700,3 r 800,3 r 900,3 r 1000,3 r print stringtogeom Thickness,1,TScale,0.05,0.05 split swap append newdrawing refresh
+        # : t "Start with two ints/floats on the stack, this will add together and make a list added and the second argument." swap 1 pick + int delist swap 1 pick list 1 pick append ; clear -3 int 3 int t
+        # : rangeline "" 1 pick list 1 pick append int getunicoderange concat \n concat ; : nextrange "Start with two ints/floats on the stack, this will add together and make a list added and the second argument." swap 1 pick + int delist swap 1 pick list 1 pick append ; : r "Execute one unicode range into elements." rangeline nextrange ; clear -3 3 r r r r r r r r r r
+        # startint stepint t r t r t r
+        # : rangeline "" getunicoderange 3 pull swap concat \n concat ; : nextrange ""  1 pull 2 pull 1 pick + int delist swap 1 pick list 1 pick append stack ; : r "Execute one unicode range into elements." nextrange rangeline ; 
+        #  100 int 10 int "" r r r r
+        # clear 1 int 25 int "" r r r r r r r r r r r r r r r r r r r r r r r r r r r r r r r r print
+        # clear -99 int 100 int "" r r r r r r r r r r r r r r r r r r r r r r r r r r r r r print
+        # clear -149 int 150 int "" r r r r r r r r r r r r r r r r r r r r  print
+        # stringtogeom Thickness,1,TTranslate,0,43000000,TScale,0.05,0.05 split swap append newdrawing refresh ◎ 9678 
+        # 0x25CB	9675	WHITE CIRCLE in font table is 'circle'
+        # 'AA\nAAA stringtogeom Thickness,1,TScale,10000,-10000 split swap append newdrawing refresh
+        # For Noto Regular
+        # 'AA\nAAA\nA stringtogeom Thickness,1,TScale,1000,-1000 split swap append newdrawing refresh
+        # 'abc\ndef\nghi stringtogeom Thickness,1,TTranslate,0,53000,TScale,1000,1000 split swap append newdrawing refresh
+        # clear 8 150 * 149 - 150 int "" r r r r  print
+        # clear 0 150 * 149 - 150 int "" r r r r  r r r r  r r r r  r r r r  r r r r  r r r r  print
+        # https://www.cambam.pixelmaker.eu/Cambam/Aide/Plugins/stickfonts.html
+        
+    def stringtogeom(self,*c):
+        """Geometry [STRING] Convert string to geoms."""
+        current_position=[0.0,0,0] # native units
+
+        #scale = float(1) # 0.02*pcbnew.IU_PER_MM # for converting font glyph data into KiCAD units
+        heightvector = [0.0,0.0]
+        line_start = list(current_position)
+        #output('string type {}'.format(type(c[0][0])))
+        
+        # to output the font at the actual size 
+        # fscale = 72 * 1000 * pcbnew.IU_PER_MIL * FontSizeInPoints / unitsPerEm
+        FontSizeInPoints = 10.0
+        # output('font unitsPerEm = {}'.format(fonts.getfont()._overall['unitsPerEm']))
+        fscale = 1000.0 * pcbnew.IU_PER_MILS * FontSizeInPoints / (fonts.getfont()._overall['unitsPerEm'] * 72.0)
+        # start a new transform matrix. then scale so the font is actual size and
+        # 10 point font = em bounding box is 10 / 72 inches (138 mils = 3.5 mm).
+        geomlist = [['T+','Thickness',1,'S',fscale,'Sy',-1]] # make the preamble its own list
+        stringforrender = c[0][0].encode('unicode_escape').decode('string_escape').decode('unicode_escape')
+        for char in stringforrender:
+            # Each glyph will be a single polygon, with (possibly) multiple polygon outer contours and holes.
+            try:
+                glyphdata = fonts.getfont().char(char)
+            except:
+                glyphdata = None
+            overall = fonts.getfont()._overall
+            # heightvector[0] = max(glyphdata['hv'][0],heightvector[0]) # need to handle negative values
+            # heightvector[1] = max(glyphdata['hv'][1],heightvector[1])
+            
+            if glyphdata:
+                #output('{} {}'.format(glyphdata['av'],glyphdata['svg']))
+                #output(': {}'.format(str(geom)))
+                contourgeoms = svgutil.fromsvgcontours(glyphdata['svg'])
+                # comments here are old :-(
+                # break each self intersecting contour into non-intersecting polygons. 
+                # determine hierarchy of polygons, determine which are holes and which occur inside holes, etc.
+                # 
+                # output('simplified outlines: {}'.format(simplified_outlines))
+                bsteps = _user_stacks['Params'][-1].get('beziersteps',5)
+                polygonpoints = self.contourlisttopolygonpoints(contourgeoms,bsteps=bsteps)
+                # orderedindexlist = getpolygonholes(simplified_outlines)
+                orderedindexlist = getpolygonholes(polygonpoints)
+                #for ptype,index in getpolygonholes(simplified_outlines):
+                drawnpoints = polygonpoints
+                #drawnpoints = svgutil.fromsvgcontours(glyphdata['svg'],simplified=1)
+
+                # get detailed polygons from contourlisttopolygonpoints
+                # Then we have both the detailed list and the ordered index list
+                
+
+                #output('Ordered Index List:\n{}'.format(pprint.pformat(orderedindexlist)))
+                #output('Geoms for polygon:\n{}'.format(pprint.pformat(contourgeoms)))
+                #polygonpoints = self.geomtopolygon(contourgeoms)
+                 
+
+                #output('polygons result: {}'.format(pprint.pformat(polygonpoints)))
+                orderedlist = []
+                for ptype,ipoly in orderedindexlist:
+                    drawnpoints[ipoly].insert(0,ptype)
+                    orderedlist.append(drawnpoints[ipoly])
+                geomlist.extend(orderedlist)
+                #current_position[0] += glyphdata['aw']*scale
+                advance = list(glyphdata['av'])
+            else:
+                advance = [0.0,0.0]
+            
+            #output('ord {}'.format(ord(char)))
+            if ord(char) == 10:
+                advance[0] += -(current_position[0]-line_start[0])
+                advance[1] = -overall['line'][1]
+                #output('advancing line by {}; after scale {}'.format(advance,(advance[0]*scale,advance[1]*scale)))
+            geomlist.append(('+T,{},{}'.format(advance[0],advance[1]).split(',')))
+            current_position[0] += advance[0]
+            current_position[1] += advance[1]
+            # TTranslate,mm,0,150 split a\nd stringtogeom append print
+            #output('FINAL GEOM LIST BEFORE POLYGON {}'.format(geomlist))
+        geomlist.append('T-') # pop out of the character transform matrix
+
+        return geomlist # self.geomtopolygon((geomlist))
+    def stringtosvg(self,*c):
+        """Geometry [STRING] Convert string to geoms."""
+        current_position=[0.0,0,0] # native units
+        geomlist = []
+        scale = 1 #0.02*pcbnew.IU_PER_MM # for converting font glyph data into KiCAD units
+        heightvector = [0.0,0.0]
+        line_start = list(current_position)
+        #output('string type {}'.format(type(c[0][0])))
+        stringforrender = c[0][0].encode('unicode_escape').decode('string_escape').decode('unicode_escape')
+        for char in stringforrender:
+            try:
+                glyphdata = fonts.getfont().char(char)
+            except:
+                glyphdata = None
+            overall = fonts.getfont()._overall
+            # heightvector[0] = max(glyphdata['hv'][0],heightvector[0]) # need to handle negative values
+            # heightvector[1] = max(glyphdata['hv'][1],heightvector[1])
+            
+            if glyphdata:
+                #output('{} {}'.format(glyphdata['av'],glyphdata['svg']))
+                #output(': {}'.format(str(geom)))
+                geomlist.append(svgutil.fromsvgcontours((glyphdata['svg'],scale))) # fromsvgcontours are the contour geoms
+                #current_position[0] += glyphdata['aw']*scale
+                advance = [glyphdata['av'][0],glyphdata['av'][1]]
+            else:
+                advance = [0.0,0.0]
+            
+            #output('ord {}'.format(ord(char)))
+            if ord(char) == 10:
+                advance[0] += - (current_position[0]-line_start[0])
+                advance[1] += -overall['line'][1]
+                #output('advancing line by {}; after scale {}'.format(advance,(advance[0]*scale,advance[1]*scale)))
+            geomlist.append(('+T,{},{}'.format(advance[0],advance[1]).split(',')))
+            current_position[0] += advance[0]
+            current_position[1] += advance[1]
+            # TTranslate,mm,0,150 split a\nd stringtogeom append print
+            #output('FINAL GEOM LIST BEFORE POLYGON {}'.format(geomlist))
+        return ' '.join(svglist)
     # def newsegment(self,*c):
         # """Draw [TYPE POINTS] Define a new segment using drawparameters, TYPE (string), and POINTS (list of floats)."""
         # c=c[0]
@@ -4229,7 +5955,233 @@ class commands:
         
         # # Possible algorithm for Line
         # listtoargs("pp",c[1])
+    # def getfontlist(self,*c):
+        # """Font Returns the list of available fonts."""
+        # return fonts.getfontmanager().getfontlist()
+    def getfontlist(self,*c):
+        """Font Returns the list of available fonts with family and subfamily."""
+        fontlist = []
+        fontbyfamandsub = fonts.getfontmanager().getfontfamilies()
+        for family,famdict in sorted(fontbyfamandsub.items()):
+            for subfamily,subdict in sorted(famdict.items()):
+                for fontname in sorted(subdict):
+                    fontlist.append('{}: Family: {} Subfamily: {}'.format(fontname,family,subfamily))
+        output('\n'.join(fontlist))
+        
+    def setfont(self,fontname):
+        """Font [FONTNAME] Sets the current font to FONTNAME. getfontlist,"""
+        global font
+        font = fonts.getfont(fontname[0]) or font
+    def fontinfo(self,*c):
+        """Font Output current font's info"""
+        f = fonts.getfont()
+        retval = []
+        for nId in f.getNameIndexes():
+            retval.append(u'{}: {}\n'.format(f.getNameShortDescription(nId),f.getNameValue(nId)))
+        output(u'{}:\n'.format(f._fontname))
+        
+        retval = ''.join(retval)
+        retval = '\n'.join(['\n'.join(textwrap.wrap(line, 76,
+                 break_long_words=False, replace_whitespace=False))
+                 for line in retval.splitlines() if line.strip() != ''])
 
+        # indent('\n'.join(textwrap.wrap(''.join(retval),76)), 4)
+        retval = indent(retval,4)
+        output(retval)
+#               indent('\n'.join(textwrap.wrap(''.join(retval),6)), 4)
+
+    symboltype2args = {
+        'A': ('type','posx','posy','radius','start_angle','end_angle','unit','convert','thickness','fill','startx','starty','endx','endy')
+        ,'C': ('type','posx','posy','radius','unit','convert','thickness','fill')
+        ,'S': ('type','startx','starty','endx','endy','unit','convert','thickness','fill')
+        ,'P': ('type','point_count','unit','convert','thickness') # (px py)* fill
+        #,'X': ('type','name','num','posx','posy','length','direction','name_text_size','num_text_size','unit','convert','electrical_type') # [pin_type]
+        }
+        
+# https://en.wikibooks.org/wiki/Kicad/file_formats
+# 
+
+# name = name displayed on the pin
+# num = pin no. displayed on the pin
+# posx = Position X same units as the length
+# posy = Position Y same units as the length
+# length = length of pin
+# direction = R for Right, L for left, U for Up, D for Down
+# name_text_size = Text size for the pin name
+# num_text_size = Text size for the pin number
+# unit_num = Unit number reference (see REF 'unit_count')
+# convert = (0 if common to the representations, if not 1 or 2)
+# electrical_type = Elec. Type of pin (I=Input, O=Output, B=Bidi, T=tristate,P=Passive, U=Unspecified, W=Power In, w=Power Out, C=Open Collector, E=Open Emitter, N=Not Connected)
+# [pin_type] = Type of pin or "Graphic Style" (N=Not Visible, I=Invert (hollow circle), C=Clock, IC=Inverted Clock, L=Low In (IEEE), CL=Clock Low, V=Low Out (IEEE), F=Falling Edge, NX=Non Logic). Optional : when not specified uses "Line" graphic style.
+    def importlib(self,filename):
+        """Symbol,Schematic [LIB_FILE_NAME] import lib file as a dict with drawing elements, keyed by symbol name. getsymbolvar,symboltogeom"""
+        filename = filename[0]
+        libdict = {}
+        output('reading file: {}'.format(filename))
+        with codecs.open(filename, encoding='utf-8') as lib:
+            fileiter = iter(lib)
+            version = next(fileiter)
+            # EESchema-LIBRARY Version 2.4
+            if version != 'EESchema-LIBRARY Version 2.4\n':
+                output('Warning: Expected EESchema-LIBRARY Version 2.4. Detected Version {}'.format(version.split()[-1]))
+            for line in fileiter:
+                if line.startswith('#'):
+                    continue
+                #output('Line: {}'.format(line))
+                words = line.split()
+                if words[0] == 'DEF':
+                    key = words[1]
+                    for line in fileiter:
+                        # if line.startswith('#'):
+                            # continue
+                        words = line.split()
+                        if words[0] == 'DRAW':
+                            drawdef = []
+                            parts = defaultdict(list)
+                            for line in fileiter:
+                                # if line.startswith('#'):
+                                    # continue
+                                if words[0] == 'ENDDRAW':
+                                    break
+                                words = line.split()
+                                # Here we create dictionary keyed by convert + unit
+
+                                keys = self.symboltype2args.get(words[0],None)
+                                if keys is None:
+                                    continue
+                                pdict = {k:v for (k,v) in zip(keys, words)} 
+                                if words[0] == 'P':
+                                    pdict['points'] = words[len(keys):-1]
+                                    pdict['fill'] = words[-1]
+                                unitconvert = '00'
+                                parts[pdict['convert']+pdict['unit']].append(line)
+
+                                drawdef.append(parts)
+
+                                # if words[0] in 'ACTS':
+                                    # drawdef.append(line)
+                            if words[0] == 'ENDDRAW':
+                                break
+                    
+                    libdict[key] = parts # drawdef
+        return libdict
+
+    def getsymbolvar(self, c):
+        """Symbol,Schematic [IMPORTLIBOUTPUT NAME_VAR_UNIT] from the output of importlib, retrieve the specified symbol, variation and unit. importlib,symboltogeom"""
+        ssoutput, namevarunit = c
+        
+        if isinstance(namevarunit,basestring):
+            namevarunit = namevarunit.split(',')
+        name = namevarunit.pop(0)
+        if namevarunit:
+            var = str(namevarunit.pop(0))
+        else:
+            var = '1'
+        if namevarunit:
+            unit = str(namevarunit.pop(0))
+        else:
+            unit = '1'
+        # except:            
+            # raise TypeError('Name, Unit, and Variation must be specified as list or comma-separated string "INVERTER,1,1"')
+        # cu also gets 0u and c0
+        
+        single = ssoutput[name]
+        #output('single: {}'.format(str(single)))
+        varunit=str(var)+str(unit)
+        lineoutput = []
+        for key in (varunit,varunit[0]+'0','0'+varunit[1:]):
+            #output('key {}?'.format(key))
+            if key in single:
+                lineoutput.extend(single[key])
+        return ''.join(lineoutput)
+        
+    # def splitsymbolvars(self, drawdef):
+        # """Schematic [DRAW_DEFINITION] extract the units and variations from the DRAW_DEFINITION. ,importlib"""
+        # parts = defaultdict(list)
+        # for line in drawdef[0].splitlines():
+            # words = line.split()
+            # keys = self.symboltype2args.get(words[0],None)
+            # if keys is None:
+                # continue
+            # pdict = {k:v for (k,v) in zip(keys, words)} 
+            # if words[0] == 'P':
+                # points = itertools.islice(words,len(keys),-1)
+                # pdict['points'] = points
+                # pdict['fill'] = words[-1]
+            # #unitconvert = '00'
+            
+            # parts[pdict['convert']+pdict['unit']].append(line)
+        # return parts
+        
+    # to get a symbol to geom, use importlib SYMBOLNAME,CONVERT,UNIT getsymbolvar symboltogeom
+    # alternatively define this
+    # : getsymbolgeom "Symbol [LIBFILE SYMBOLNAME_CONVERT_UNIT_LIST] Gets the indicated symbol variation and part number from LIBFILE. importlib,getsymbolvar,symboltogeom" pull 1 importlib swap getsymbolvar symboltogeom ;
+    def symboltogeom(self, drawdef):
+        """Schematic [DRAW_DEFINITION] the definition of the symbol, as returned by importlib and getsymbolvar. importlib,getsymbolvar"""
+        # https://en.wikibooks.org/wiki/Kicad/file_formats#Schematic_Libraries_Files_Format
+        geoms = []
+        # #unit = int(drawdef[1])
+        # # 'P' (polygon) is special because it has multiple vertices.
+        # # 'T' (text) is special because text could(?) include spaces.
+        # symboltype2args = {
+            # 'A': ('type','posx','posy','radius','start_angle','end_angle','unit','convert','thickness','fill','startx','starty','endx','endy')
+            # ,'C': ('type','posx','posy','radius','unit','convert','thickness','fill')
+            # ,'S': ('type','startx','starty','endx','endy','unit','convert','thickness','fill')
+            # ,'P': ('type','point_count','unit','convert','thickness') # (px py)* fill
+            # }
+        for line in drawdef[0].splitlines():
+            words = line.split()
+            if words[0] == 'A':
+
+                # A posx posy radius start_angle end_angle unit convert thickness fill startx starty endx endy
+                keys = ('type','posx','posy','radius','start_angle','end_angle','unit','convert','thickness','fill','startx','starty','endx','endy')
+                pdict = { k:v for (k,v) in zip(keys, words)}
+                # u = int(pdict['unit'])
+                # if u != 0 and u != unit:
+                    # continue
+                pdict['angle'] = (float(pdict['end_angle']) - float(pdict['start_angle']))/10.0
+                # posx, posy = centre of the circle part of which is the arc
+                # radius = radius of the lost arc
+                # start_angle = start angle of the arc in tenths of degrees
+                # end_angle = end angle of the arc in tenths of degrees
+                # startx, starty = coordiantes of the start of the arc
+                # endx, endy = coordinates of the end of the arc
+
+                # center,start,angle
+                #output(str(pdict))
+                geoms.append(
+                'ArcC,{posx},{posy},{startx},{starty},{angle}'.
+                    format(**pdict).split(',')
+                    )
+
+            elif words[0] == 'C':
+                # C posx posy radius unit convert thickness fill
+                keys = ('type','posx','posy','radius','unit','convert','thickness','fill')
+                pdict = { k:v for (k,v) in zip(keys, words)}
+                
+                pdict['radius'] = float(pdict['radius'])/10.0
+                # posx, posy = centre of the circle
+                # radius = radius of the circle
+                geoms.append(
+                'CircleC,{posx},{posy},{radius}'.
+                    format(**pdict).split(',')
+                    )
+            elif words[0] == 'T':
+                pass
+            elif words[0] == 'S':
+                # S startx starty endx endy unit convert thickness fill
+                keys = ('type','startx','starty','endx','endy','unit','convert','thickness','fill')
+                pdict = { k:v for (k,v) in zip(keys, words)}
+                
+                # startx, starty = Starting corner of the rectangle
+                # endx, endy = End corner of the rectangle
+                geoms.append(
+                'Polyline,{startx},{starty},{endx},{starty},{endx},{endy},{startx},{endy},{startx},{starty}'.
+                    format(**pdict).split(',')
+                    )
+                    
+        return geoms
+        
 ################## END OF COMMANDS CLASS ###########################
             
     #modules copy GetReference call .*EF.* regex isnotnone filter Reference call false SetVisible callargs
@@ -4331,10 +6283,10 @@ def REMOVE(items):
     access = ((pcbnew.TRACK,t),(pcbnew.MODULE,m),(object,d))    
     for item in items:
         for inst,remove in access:
-            output(str(inst),str(remove))
+            #output(str(inst),str(remove))
             if isinstance(item,inst):
                 remove(item)
-                continue
+                break
 
     
 def TOCOPPER(*c):
@@ -4661,6 +6613,21 @@ def safe_divide(a,b):
         return float(a)/float(b)
     except:
         return a
+
+# params is extended to set other various parameters
+# t - Thickness of a drawsegment or track, this is commonly referred to as "width"
+# w - Width of text
+# h - Height of text
+# l - Layer for drawing
+# zt - ZoneType, one of NO_HATCH, DIAGONAL_FULL, or DIAGONAL_EDGE
+# zp - ZonePriority
+# debug - an integer indicating the debug level, 0 - 5 where 0 is no debug
+# arcerror - integer in native units of the minimum error when converting an arc into line segments
+# arcerrorradius   - a float between 0.0 and 1.0 indicating, as a fraction of radius, the maximum error when turning an arc into segments 
+# beziersteps   - the integer number of steps for turning a bezier curve into segments.
+
+# params are held by the UserStack as a list (which can be considered a stack itself)
+# that contains a dictionary keyed by parameter name.
     
 # Add more command definitions
 _dictionary['command'].update({
@@ -4717,6 +6684,14 @@ _dictionary['command'].update({
 
     'index.': Command(2, lambda c: map(lambda x: x[int(c[1])],c[0]), 'Conversion',
         '[LISTOFLISTS INDEX] return a list made up of the INDEX item of each list in LISTOFLISTS'),
+    'indexx': Command(2, lambda c: reduce(lambda a,b: a[b],c[1],c[0]), 'Conversion',
+        '[LISTOFLISTS INDEXLIST] takes each successive index in the index list and gets each index individually. index must be the proper type (integer for lists). For example, [5,6,7] will get the 7th element of the 6th element of the 5th element of the "top" list.'),
+    'replace': Command(2, lambda c: operator.setitem(reduce(lambda a,b: a[b],c[0][:-1],_stack[-3]),c[0][-1],c[1]), 'Conversion',
+        '[LISTOFLISTS INDEXLIST VALUE] takes the successive index in the index list and gets each index individually. index must be the proper type (integer for lists). For example, [5,6,7] will get the 7th element of the 6th element of the 5th element of the "top" list.'),
+        # operator.setitem(array,index,value)
+        # Noto-sans-cjk-jp-thin setfont \u00d8 stringtogeom pprint 3,0 int Hole replace
+    
+        # _stack[-1]
     'index': Command(2,
                        lambda c: c[0][int(c[1])] if isinstance(c[1],basestring) \
                        and c[1].find(',') == -1 else map(lambda x: x[0][int(x[1])],
@@ -4797,6 +6772,8 @@ _dictionary['command'].update({
         'Output the string representation of each object on the stack'),
     'print': Command(0,lambda c: PRINT(*c),'Output',
         'Output the string representation of the top object on the stack'),
+    'pprint': Command(0,lambda c: PPRINT(*c),'Output',
+        'Pretty print the string representation of the top object on the stack'),
     'builtins': Command(0,lambda c:  __builtins__,'Programming,Python',
         """Output the __builtins__ Python object, giving access to the built in Python functions.\n
         Example: builtins pow sindex list 2,3 float list fcallargs sindex,fcallargs"""),
@@ -4818,17 +6795,22 @@ _dictionary['command'].update({
                 lambda c: 
                 map(lambda x: 
                         x[0](*(x[1])), 
-                        zip(c[0], cycle(c[1]))
+                        #itertools.islice(zip(itertools.cycle(c[0]),itertools.cycle(c[1])),max(len(c[0]),len(c[1])))
+                        itertools.islice(itertools.izip(itertools.cycle(c[0]),itertools.cycle(c[1])),max(len(c[0]),len(c[1])))
+                        # zip(c[0], cycle(c[1]))
                    )
                 ,'Python',
-        '[FUNCTIONLIST ARGLISTOFLISTS] Execute each python function in the'
-        'FUNCTIONLIST on each member of that list with arguments in ARGLISTOFLISTS.' 'ARGLISTOFLISTS can be '
-        'a different length than OBJECTLIST, in which case ARGLISTOFLISTS '
-        'elements will be repeated (or truncated) to match the length of '
-        'OBJECTLIST. Returns the list of results in the same order as the '
-        'original OBJECTLIST. The commands LIST and ZIP2 will be helpful '
+                # islice(seq,start,stop)
+                # itertools.islice(zip(cycle(c[0]),cycle(c[1])),0,max(len(c[0],c[1])))
+        '[FUNCTIONLIST ARGLISTOFLISTS] Execute each python function in the '
+        'FUNCTIONLIST on each member of that list with arguments in ARGLISTOFLISTS. '
+        'ARGLISTOFLISTS can be '
+        'a different length than FUNCTIONLIST, in which case the short list of the two '
+        'will be repeated to match the length of '
+        'the longer. Returns the list of results in the same order as the '
+        'original OBJECTLIST. The commands LIST and ZIP2 might be helpful '
         'here. '
-        'fcallargs differs from callargs in that call assumes the function is a attribute of the object identified by the named function (string), '
+        'fcallargs differs from callargs in that "call" assumes the function is a attribute of the object identified by the named function (string), '
         'whereas fcall assumes the function is a an actual Python function object. They also handle list arguments differently. list,zip,zip2,callargs'),
  
     
@@ -4963,8 +6945,8 @@ _dictionary['command'].update({
                        if isinstance(c[0],basestring) else c[0]
                        if hasattr(c[0],'__iter__') else [c[0]]),
                        'Conversion',
-        '[OBJECT] Return OBJECT as a rounded floating point value or list. OBJECT can '
-        'be a string, a comma separated list of values, a list of strings, or '
+        '[OBJECT N] Return OBJECT as a floating point value or list each member rounded to N number of decimals. '
+        'OBJECT can be a string, a comma separated list of values, a list of strings, or '
         'list of numbers.', ),
     'bool': Command(1,
     # if basestring and has ','
@@ -5079,7 +7061,7 @@ _dictionary['command'].update({
         'the semicolon (;). Run command SEEALL for more examples. Special commands are '
         "Delete all commands ': ;'. Delete a command ': COMMAND ;"
         ),
-        
+    # this is here only to provide help text. The main execution of '?' happens during parsing of command strings
     '?': Command(0,lambda c: None,'Programming',
         "?command will pop the stack and execute 'command' if True. "
         'The top of the stack is interpreted as a boolean, (see bool). '
@@ -5151,31 +7133,31 @@ _dictionary['command'].update({
         'within SEGMENTLIST by adding ARCs of specified RADIUS.'),
     'angle': Command(1,lambda c: ANGLE(*c),'Geometry',
         '[SEGMENTLIST] Return the angle of each segment in SEGMENTLIST.'),
-    'drawarctest':Command(1,lambda c: draw_arc(50*pcbnew.IU_PER_MM,50*pcbnew.IU_PER_MM,radius,angle,layer=_user_stacks['drawparams']['l'],thickness=_user_stacks['drawparams']['t']),'Draw',
+    'drawarctest':Command(1,lambda c: draw_arc(50*pcbnew.IU_PER_MM,50*pcbnew.IU_PER_MM,radius,angle,layer=_user_stacks['Params'][-1]['l'],thickness=_user_stacks['Params'][-1]['t']),'Draw',
         ""),
-    'drawarc':Command(2,lambda c: draw_arc(c[0][0],c[0][1],c[0][2],c[0][3],c[1],layer=_user_stacks['drawparams']['l'],thickness=_user_stacks['drawparams']['t']),'Draw',
+    'drawarc':Command(2,lambda c: draw_arc(c[0][0],c[0][1],c[0][2],c[0][3],c[1],layer=_user_stacks['Params'][-1]['l'],thickness=_user_stacks['Params'][-1]['t']),'Draw',
         "[STARTX,STARTY,CENTERX,CENTERY DEGREES] Draw an arc with the given parameters. Layer and Thickness are taken from the draw parameters (see params command)"),
     'remove':Command(1,lambda c: REMOVE(*c),'Layer',
         '[OBJECTORLIST] remove items from board. Works with any items in Modules, Tracks, or Drawings.'),
     'tosegments':Command(2,lambda c: tosegments(*c),'Layer',
         '[LIST LAYER] copy tracks or point pairs in LIST to drawsegments on LAYER. Copies width of each track.'),
-    'drawsegments':Command(1,lambda c: draw_segmentlist(c[0],layer=_user_stacks['drawparams']['l'],thickness=_user_stacks['drawparams']['t']),'Draw',
+    'drawsegments':Command(1,lambda c: draw_segmentlist(c[0],layer=_user_stacks['Params'][-1]['l'],thickness=_user_stacks['Params'][-1]['t']),'Draw',
         "[POINTSLIST] Points list is interpreted as pairs of X/Y values. Line segments are"
         "drawn between all successive pairs of points, creating a connected sequence of lines "
         "where each point is a vertex in a polygon "
         "as opposed to being just a list of line segments or point pairs. "
         "This command uses previously set drawparams and the points are in native units (nm) so using mm or mils commands is suggested."),
-    'drawtext': Command(2,lambda c: draw_text(c[0],c[1],[_user_stacks['drawparams']['w'],_user_stacks['drawparams']['h']],layer=_user_stacks['drawparams']['l'],thickness=_user_stacks['drawparams']['t']),'Draw',
+    'drawtext': Command(2,lambda c: draw_text(c[0],c[1],[_user_stacks['Params'][-1]['w'],_user_stacks['Params'][-1]['h']],layer=_user_stacks['Params'][-1]['l'],thickness=_user_stacks['Params'][-1]['t']),'Draw',
         '[TEXT POSITION] Draws the TEXT at POSITION using previously set drawparams. Position is in native units (nm) so using mm or mils commands is suggested.'),
     'drawparams': Command(2,lambda c: DRAWPARAMS(c),'Draw',
         '[THICKNESS,WIDTH,HEIGHT LAYER] Set drawing parameters for future draw commands.\n'
         'Example: 1,5,5 mm F.Fab drawparams'),
-    'getparams': Command(0,lambda c: _user_stacks['drawparams'],'Draw',
+    'getparams': Command(0,lambda c: _user_stacks['Params'][-1],'Draw',
         'Return the draw parameters.'),
     #'findnet': Command(1,lambda c: FINDNET(*c),'Draw','[NETNAME] Returns the netcode of NETNAME.'),
     # findnet could be implemented as ':persist findnet "Draw [NETNAME] Returns the netcode of NETNAME." board swap FindNet call'
 
-    'param': Command(2,lambda c: PARAM(*c),'Draw',
+    'params': Command(2,lambda c: PARAM(*c),'Draw',
         '[VALUESLIST KEYLIST] Set drawing parameters. Each member of VALUELIST is assigned to the '
         'corresponding key in KEYLIST. Keys are "t,w,h,l,zt,zp" indicating Thickness, Width, Height, '
         'Layer, ZoneType, ZonePriority. ZoneType is one of NO_HATCH, DIAGONAL_FULL, or DIAGONAL_EDGE.\n'
@@ -5252,8 +7234,8 @@ def printcategories():
         output( '\t','\n\t'.join(val))
         
 pshapesactual = filter(lambda x: x.startswith('PAD_SHAPE_'),dir(pcbnew))
-pshapes = ['PAD_SHAPE_CIRCLE','PAD_SHAPE_OVAL', 'PAD_SHAPE_RECT', 'PAD_SHAPE_ROUNDRECT', 'PAD_SHAPE_TRAPEZOID']
-
+# pshapes = ['PAD_SHAPE_CIRCLE','PAD_SHAPE_OVAL', 'PAD_SHAPE_RECT', 'PAD_SHAPE_ROUNDRECT', 'PAD_SHAPE_TRAPEZOID'] 5.1.5
+pshapes = ['PAD_SHAPE_CIRCLE', 'PAD_SHAPE_CUSTOM', 'PAD_SHAPE_OVAL', 'PAD_SHAPE_RECT', 'PAD_SHAPE_ROUNDRECT', 'PAD_SHAPE_TRAPEZOID'] # 5.1.6
 if Counter(pshapesactual) != Counter(pshapes):
     try:
         output( 'Warning! Expected Pad Shapes are different than KiCommand expects. KiCAD has been updated? Consider running unit tests (import kicommand.test)')
@@ -5261,15 +7243,15 @@ if Counter(pshapesactual) != Counter(pshapes):
         pass
 
 def _newsegment(type, points):
-    output("_newsegment: {} {}".format(type,points))
+    #output("_newsegment: {} {}".format(type,points))
     
     board = getBoard()
     ds=pcbnew.DRAWSEGMENT(board)
     board.Add(ds)
-    layer = _user_stacks['drawparams']['l']
+    layer = _user_stacks['Params'][-1]['l']
 
     ds.SetLayer(getLayerID(layer)) # TODO: Set layer number from string
-    ds.SetWidth(max(1,int(_user_stacks['drawparams']['t'])))
+    ds.SetWidth(max(1,int(_user_stacks['Params'][-1]['t'])))
     
     # ds=pcbnew.DRAWSEGMENT()
     # types = {}
@@ -5359,10 +7341,10 @@ def pad_to_drawsegment(pad):
     board = getBoard()
     ds=pcbnew.DRAWSEGMENT(board)
     board.Add(ds)
-    layer = _user_stacks['drawparams']['l']
+    layer = _user_stacks['Params'][-1]['l']
 
     ds.SetLayer(getLayerID(layer)) # TODO: Set layer number from string
-    ds.SetWidth(max(1,int(_user_stacks['drawparams']['t'])))
+    ds.SetWidth(max(1,int(_user_stacks['Params'][-1]['t'])))
 
     if pad.GetShape() in [pcbnew.PAD_SHAPE_RECT,
                           pcbnew.PAD_SHAPE_ROUNDRECT,
@@ -5524,7 +7506,31 @@ def flatten(iterable):
             else:
                 stack.append(iterator)
                 iterator = new_iterator
-                
+import random    
+def font_test(origin=(0,0)):
+
+    x,y = origin
+    fm = fonts.getfontmanager()
+    fontlist = fm.getfontlist()
+    count = -1
+    random.shuffle(fontlist)
+    #print('Fontlist:',fontlist)
+    for font in fontlist[:80]: # 90 fonts fails, 80 succeeds, 85 fails
+        count += 1
+        print(font)
+        fm.getfont(font)
+        #for glyphname,glyphdata in self._fontdata.items():
+        #for codepoint,glyphname in self._fontdata._unicode_codepoint_lookup.items():
+        ustr = u''.join([unichar(ord) for ord in sorted(fonts.getfont()._unicode_codepoint_lookup.keys())])
+        ustr=ustr.replace(u'"',u"")
+        #print(ustr)
+        fontsize = 10.0
+        r=kc(u'{} setfont {} stringtogeom Tmm,-1000,{} split swap append newdrawing'.format(font,font,-1000+count*30*fontsize/72.0))
+        r=kc(u'{} setfont {} stringtogeom Tmm,-908,{} split swap append newdrawing'.format(font,ustr,-1000+count*30*fontsize/72.0))
+        # ustr[:100]
+        fm.removeFromTable(font)
+    kc('refresh')
+    # : windowzoom "Gui [x_y_w_h] input is a list of integers. Zoom to the box defined by x,y and w(idth), h(eight)." int pcbnew swap WindowZoom callargs ;
 def visual_test(originpoint):
 
     x,y = originpoint

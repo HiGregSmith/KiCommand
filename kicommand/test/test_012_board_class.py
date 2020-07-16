@@ -84,7 +84,7 @@ class TestBoardClass(unittest.TestCase):
         # create new board
         pcb = kc('clear newboard board')
         # put one track on it (front copper trace 0.5mm thickness from 10,10 to 20,30)
-        track = kc('clear 0.5 mm t param F.Cu l param 10,10,20,30 mm '
+        track = kc('clear 0.5 mm t params F.Cu l params 10,10,20,30 mm '
                         'drawsegments delist delist')
 
         # 5.3.3 note: Bounding Box no longer includes clearance value

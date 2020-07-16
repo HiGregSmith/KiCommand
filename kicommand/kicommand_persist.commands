@@ -3,7 +3,7 @@
 :persist valuetextobj       "Elements Get all module's Value text objects." modules Value call ;
 :persist referencetextobj   "Elements Get all module's Reference text objects." modules Reference call ;
 :persist moduletextobj      "Elements Get all module's text objects that are not Value and not Reference." modules GraphicalItems calllist EDA_TEXT filtertype ;
-:persist drawparams         "Draw [THICKNESS,WIDTH,HEIGHT LAYER] Set drawing parameters for future draw commands.\nExample: 1,5,5 mm F.Fab drawparams" 'l param t,w,h param ;
+:persist drawparams         "Draw [THICKNESS,WIDTH,HEIGHT LAYER] Set drawing parameters for future draw commands.\nExample: 1,5,5 mm F.Fab drawparams" 'l params t,w,h params ;
 :persist textfromobj        "Elements [TEXTOBJECT] Get the text string from a text object. valobj,refobj" GetShownText call ;
 :persist valuetext          "Elements Get all module's Value text as a string." modules GetValue call ;
 :persist referencetext      "Elements Get all module's Reference text as a string." modules GetReference call ;
@@ -104,3 +104,4 @@
 :persist justifym           "Text [TEXTOBJ_LIST] Vertical left justify text object" copy pcbnew list GR_TEXT_VJUSTIFY_CENTER attr delist SetVertJustify callargs pop ;
 :persist justifyt           "Text [TEXTOBJ_LIST] Vertical top justify text object" copy pcbnew list GR_TEXT_VJUSTIFY_TOP attr delist SetVertJustify callargs pop ;
 :persist justifyb           "Text [TEXTOBJ_LIST] Vertical bottom justify text object" copy pcbnew list GR_TEXT_VJUSTIFY_BOTTOM attr delist SetVertJustify callargs pop ;
+:persist getsymbolgeom      "Symbol [LIBFILE SYMBOLNAME_CONVERT_UNIT_LIST] Gets the indicated symbol variation and part number from LIBFILE. importlib,getsymbolvar,symboltogeom" 1 pull importlib swap getsymbolvar symboltogeom ;
